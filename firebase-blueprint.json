@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Case": {
+      "title": "Refugee Case",
+      "description": "Details of a refugee case and services provided",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "type": { "type": "string", "enum": ["emergency", "scheduled"] },
+        "nationality": { "type": "string" },
+        "gender": { "type": "string", "enum": ["male", "female", "other"] },
+        "age": { "type": "number" },
+        "unhcrId": { "type": "string" },
+        "individualId": { "type": "string" },
+        "submissionId": { "type": "string" },
+        "legalStatus": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "currentLocation": { "type": "string" },
+        "admissionDate": { "type": "string", "format": "date-time" },
+        "diagnosis": { "type": "string" },
+        "intervention": { "type": "string" },
+        "service": { "type": "string" },
+        "hospital": { "type": "string" },
+        "improved": { "type": "boolean" },
+        "estimatedCost": { "type": "number" },
+        "realCost": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Delivered", "Cancelled"] },
+        "hotlineName": { "type": "string" },
+        "localPoint": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactMethod": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "type", "unhcrId", "ownerId", "createdAt", "updatedAt"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "Information about the staff member",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/cases/{caseId}": {
+      "schema": "Case",
+      "description": "Collection of all refugee cases"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles for staff"
+    }
+  }
+}

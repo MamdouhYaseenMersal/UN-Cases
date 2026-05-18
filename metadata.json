@@ -1,0 +1,6 @@
+{
+  "name": "Refugee Case Manager",
+  "description": "A comprehensive system for UNHCR refugee case management, covering emergency and scheduled services based on medical and registration data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #0072bc; /* UNHCR Blue */
+  --color-brand-secondary: #10b981; /* Emerald */
+  --color-brand-urgent: #ef4444; /* Red */
+  --color-brand-bg: #f1f5f9;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-slate-900 font-sans antialiased;
+  }
+}
+
+.geometric-bg {
+  background-image: 
+    linear-gradient(30deg, #f8fafc 12%, transparent 12.5%, transparent 87%, #f8fafc 87.5%, #f8fafc), 
+    linear-gradient(150deg, #f8fafc 12%, transparent 12.5%, transparent 87%, #f8fafc 87.5%, #f8fafc), 
+    linear-gradient(30deg, #f8fafc 12%, transparent 12.5%, transparent 87%, #f8fafc 87.5%, #f8fafc), 
+    linear-gradient(150deg, #f8fafc 12%, transparent 12.5%, transparent 87%, #f8fafc 87.5%, #f8fafc), 
+    linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75.5%, #e2e8f0), 
+    linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75.5%, #e2e8f0);
+  background-size: 80px 140px;
+  background-position: 0 0, 0 0, 40px 70px, 40px 70px, 0 0, 40px 70px;
+}
+
+.glass-card {
+  @apply bg-white border border-slate-200 shadow-sm rounded;
+}
+
+.status-urgent {
+  @apply border-r-4 border-r-brand-urgent;
+}
+
+.status-scheduled {
+  @apply border-r-4 border-r-brand-secondary;
+}
+
+.input-field {
+  @apply w-full p-2 border border-slate-200 rounded focus:ring-1 focus:ring-brand-primary outline-none transition-all bg-white text-sm;
+}
+
+.label-caps {
+  @apply text-slate-500 uppercase font-bold tracking-wider text-[10px] mb-1 block;
+}
+
+.btn-primary {
+  @apply bg-brand-primary hover:opacity-90 text-white px-6 py-2 rounded font-bold shadow-md transition-all flex items-center justify-center gap-2;
+}
+
+.btn-secondary {
+  @apply bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded font-bold transition-all flex items-center justify-center gap-2;
+}
