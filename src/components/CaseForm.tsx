@@ -45,7 +45,11 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
     attachments: [],
   });
   const [showMedicalReport, setShowMedicalReport] = useState(false);
-  const [attachmentForm, setAttachmentForm] = useState({ name: '', url: '' });
+  const [attachmentForm, setAttachmentForm] = useState<{ name: string; url: string; category: 'Medical' | 'Social' }>({ 
+    name: '', 
+    url: '', 
+    category: 'Medical' 
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -58,13 +62,14 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
       const newAtt: Attachment = {
         name: attachmentForm.name,
         url: attachmentForm.url,
+        category: attachmentForm.category,
         date: new Date().toISOString()
       };
       setFormData(prev => ({
         ...prev,
         attachments: [...(prev.attachments || []), newAtt]
       }));
-      setAttachmentForm({ name: '', url: '' });
+      setAttachmentForm({ name: '', url: '', category: 'Medical' });
     }
   };
 
@@ -406,6 +411,17 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
             <div className="md:col-span-2 space-y-4">
               <div className="flex gap-4 items-end">
                 <div className="flex-1 space-y-1">
+                  <InputLabel label="نوع الملف" />
+                  <select 
+                    className="input-field"
+                    value={attachmentForm.category}
+                    onChange={(e) => setAttachmentForm({...attachmentForm, category: e.target.value as any})}
+                  >
+                    <option value="Medical">طبي / Medical</option>
+                    <option value="Social">اجتماعي / Social</option>
+                  </select>
+                </div>
+                <div className="flex-[2] space-y-1">
                   <InputLabel label="اسم الوثيقة" />
                   <input 
                     type="text" 
@@ -441,7 +457,15 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
                     <div className="flex items-center gap-3">
                       <Paperclip size={14} className="text-slate-400" />
                       <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-800">{att.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-800">{att.name}</span>
+                          <span className={cn(
+                            "text-[8px] px-1 rounded font-bold uppercase",
+                            att.category === 'Social' ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
+                          )}>
+                            {att.category === 'Social' ? 'اجتماعي' : 'طبي'}
+                          </span>
+                        </div>
                         <span className="text-[9px] text-slate-400 font-mono truncate max-w-[200px]">{att.url}</span>
                       </div>
                     </div>

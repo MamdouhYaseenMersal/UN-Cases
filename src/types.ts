@@ -31,6 +31,7 @@ export interface Attachment {
   name: string;
   url: string;
   date: string;
+  category: 'Medical' | 'Social';
 }
 
 export type UserRole = 'admin' | 'staff';

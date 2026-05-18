@@ -57,8 +57,30 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
   const [isExporting, setIsExporting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   
-  const [newAttachment, setNewAttachment] = useState({ name: '', url: '' });
+  const [newAttachment, setNewAttachment] = useState<{ name: string; url: string; category: 'Medical' | 'Social' }>({ 
+    name: '', 
+    url: '', 
+    category: 'Medical' 
+  });
   const [showAddAttachment, setShowAddAttachment] = useState(false);
+
+  const handleUpdateField = (field: string, value: any) => {
+    if (selectedCase && onUpdateCase) {
+      const historyEntry = {
+        date: new Date().toISOString(),
+        action: 'تعديل بيانات الحالة',
+        details: `تم تحديث ${field} من ${selectedCase[field as keyof RefugeeCase]} إلى ${value}`,
+        user: currentUser.name
+      };
+      const updated = {
+        ...selectedCase,
+        [field]: value,
+        history: [historyEntry, ...(selectedCase.history || [])]
+      };
+      onUpdateCase(updated);
+      setSelectedCase(updated);
+    }
+  };
 
   const handleAddService = () => {
     if (selectedCase && newService.type && newService.provider && onUpdateCase) {
@@ -95,13 +117,15 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
       setIsUpdating(true);
       setTimeout(() => {
         const attachment: Attachment = {
-          ...newAttachment,
+          name: newAttachment.name,
+          url: newAttachment.url,
+          category: newAttachment.category,
           date: new Date().toISOString()
         };
         const historyEntry = {
           date: new Date().toISOString(),
           action: 'إضافة مرفق',
-          details: `تمت إضافة ملف جديد: ${newAttachment.name}`,
+          details: `تمت إضافة ملف ${newAttachment.category === 'Medical' ? 'طبي' : 'اجتماعي'}: ${newAttachment.name}`,
           user: currentUser.name
         };
         const updated = {
@@ -111,7 +135,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
         };
         onUpdateCase(updated);
         setSelectedCase(updated);
-        setNewAttachment({ name: '', url: '' });
+        setNewAttachment({ name: '', url: '', category: 'Medical' });
         setShowAddAttachment(false);
         setIsUpdating(false);
       }, 800);
@@ -320,6 +344,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
               onClick={handleExportCSV}
               disabled={isExporting}
               className="btn-secondary py-1.5 px-3 text-[10px] uppercase tracking-widest relative"
+              title="تصدير جميع الحالات الظاهرة في القائمة حالياً إلى ملف CSV يتضمن البيانات الأساسية والمالية"
             >
               {isExporting ? (
                 <>
@@ -531,7 +556,29 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                          selectedCase.medicalApprovalStatus === 'Rejected' ? 'مرفوضة' : 'تحت الانتظار'}
                       </span>
                     </div>
-                    <DetailRow label="المسؤول المباشر" value={selectedCase.assignedTo} icon={ShieldCheck} />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">نوع الحالة</span>
+                      <select 
+                        className="text-xs font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                        value={selectedCase.type}
+                        onChange={(e) => handleUpdateField('type', e.target.value)}
+                      >
+                        <option value="emergency">طوارئ / Emergency</option>
+                        <option value="scheduled">خدمة مجدولة / Scheduled</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">المسؤول المباشر</span>
+                      <select 
+                        className="text-xs font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                        value={selectedCase.assignedTo}
+                        onChange={(e) => handleUpdateField('assignedTo', e.target.value)}
+                      >
+                        <option value="أحمد الفارسي">أحمد الفارسي</option>
+                        <option value="سارة محمد">سارة محمد</option>
+                        <option value="خالد إبراهيم">خالد إبراهيم</option>
+                      </select>
+                    </div>
                     <DetailRow label="العمر" value={`${selectedCase.age} سنة`} />
                     <DetailRow label="النوع" value={selectedCase.gender} />
                     <DetailRow label="رقم الهاتف" value={selectedCase.mobileNumber} />
@@ -650,7 +697,18 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
 
                     {showAddAttachment && (
                       <div className="p-4 bg-slate-50 border border-slate-200 rounded space-y-4 animate-in slide-in-from-top-1">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">نوع الملف</label>
+                            <select 
+                              className="input-field py-1 h-8 bg-white" 
+                              value={newAttachment.category}
+                              onChange={(e) => setNewAttachment({...newAttachment, category: e.target.value as any})}
+                            >
+                              <option value="Medical">طبي</option>
+                              <option value="Social">اجتماعي</option>
+                            </select>
+                          </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-[9px] font-bold text-slate-400 uppercase">اسم الملف</label>
                             <input 
@@ -689,8 +747,16 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                             {format(new Date(att.date), 'dd/MM/yyyy')}
                           </div>
                           <div className="text-right flex items-center gap-3">
-                            <div className="flex flex-col">
-                              <p className="text-xs font-black text-slate-900">{att.name}</p>
+                            <div className="flex flex-col items-end">
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  "text-[8px] px-1 rounded font-bold uppercase",
+                                  att.category === 'Social' ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
+                                )}>
+                                  {att.category === 'Social' ? 'اجتماعي' : 'طبي'}
+                                </span>
+                                <p className="text-xs font-black text-slate-900">{att.name}</p>
+                              </div>
                               <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-primary font-bold hover:underline">عرض الملف</a>
                             </div>
                             <div className="p-2 bg-slate-50 rounded">
