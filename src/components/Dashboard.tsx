@@ -59,26 +59,25 @@ export default function Dashboard({ cases, stats }: DashboardProps) {
           colorClass="bg-brand-primary" 
         />
         <StatCard 
-          icon={AlertTriangle} 
-          title="حالات طارئة نشطة" 
-          value={stats.emergency} 
-          colorClass="bg-brand-urgent" 
-          borderClass="status-urgent"
-          subValue="تتطلب تدخل طبي فوري"
+          icon={TrendingUp} 
+          title="خدمات تحت التنفيذ" 
+          value={`${stats.costInProgress.toLocaleString()} ج.م`} 
+          colorClass="bg-amber-500" 
+          subValue="Registered + Under Review"
         />
         <StatCard 
           icon={CalendarCheck} 
-          title="حالات الخدمات المجدولة" 
-          value={stats.scheduled} 
-          colorClass="bg-brand-secondary" 
-          borderClass="status-scheduled"
+          title="خدمات تحت التسديد" 
+          value={`${stats.costPendingPayment.toLocaleString()} ج.م`} 
+          colorClass="bg-blue-500" 
+          subValue="Financial Review + Processed"
         />
         <StatCard 
           icon={DollarSign} 
-          title="إجمالي المصروفات الطبية" 
-          value={`${stats.totalRealCost.toLocaleString()} ج.م`} 
-          colorClass="bg-amber-500" 
-          subValue={`القيمة المقدرة: ${stats.totalEstimatedCost.toLocaleString()}`}
+          title="خدمات تم تسديدها" 
+          value={`${stats.costPaid.toLocaleString()} ج.م`} 
+          colorClass="bg-emerald-600" 
+          subValue="Total Paid (Claims & Cash)"
         />
       </div>
 

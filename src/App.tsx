@@ -18,15 +18,19 @@ import {
   Stethoscope,
   TrendingUp,
   AlertTriangle,
-  CalendarCheck
+  CalendarCheck,
+  DollarSign
 } from 'lucide-react';
 import { RefugeeCase, CaseType, CaseStatus, User } from './types';
 import Dashboard from './components/Dashboard';
 import CaseForm from './components/CaseForm';
 import CaseList from './components/CaseList';
+import ClaimsManagement from './components/ClaimsManagement';
+import CashManagement from './components/CashManagement';
 import { cn } from './lib/utils';
+import { ClipboardList } from 'lucide-react';
 
-type View = 'dashboard' | 'new-case' | 'case-list' | 'settings';
+type View = 'dashboard' | 'new-case' | 'case-list' | 'claims' | 'cash' | 'settings';
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -63,9 +67,34 @@ export default function App() {
     const emergency = cases.filter(c => c.type === 'emergency').length;
     const scheduled = cases.filter(c => c.type === 'scheduled').length;
     const totalEstimatedCost = cases.reduce((acc, curr) => acc + (curr.estimatedCost || 0), 0);
-    const totalRealCost = cases.reduce((acc, curr) => acc + (curr.realCost || 0), 0);
+    
+    // Total Real Cost is the sum of all claims and cash payments across all cases
+    const totalRealCost = cases.reduce((acc, curr) => {
+      const claimsTotal = (curr.medicalClaims || []).reduce((sum, cl) => sum + (cl.netAmount || 0), 0);
+      const cashTotal = (curr.cashPayments || []).reduce((sum, cp) => sum + (cp.netAmount || 0), 0);
+      return acc + claimsTotal + cashTotal;
+    }, 0);
 
-    return { total, emergency, scheduled, totalEstimatedCost, totalRealCost };
+    // Detailed Cost Stats
+    const costInProgress = cases.reduce((acc, curr) => {
+      const claims = (curr.medicalClaims || []).filter(cl => ['Registered', 'Under Review'].includes(cl.status)).reduce((sum, cl) => sum + cl.netAmount, 0);
+      const cash = (curr.cashPayments || []).filter(cp => ['Registered', 'Under Review'].includes(cp.status)).reduce((sum, cp) => sum + cp.netAmount, 0);
+      return acc + claims + cash;
+    }, 0);
+
+    const costPaid = cases.reduce((acc, curr) => {
+      const claims = (curr.medicalClaims || []).filter(cl => cl.status === 'Paid').reduce((sum, cl) => sum + cl.netAmount, 0);
+      const cash = (curr.cashPayments || []).filter(cp => cp.status === 'Paid').reduce((sum, cp) => sum + cp.netAmount, 0);
+      return acc + claims + cash;
+    }, 0);
+
+    const costPendingPayment = cases.reduce((acc, curr) => {
+      const claims = (curr.medicalClaims || []).filter(cl => ['Financial Review', 'Processed'].includes(cl.status)).reduce((sum, cl) => sum + cl.netAmount, 0);
+      const cash = (curr.cashPayments || []).filter(cp => ['Financial Review', 'Processed'].includes(cp.status)).reduce((sum, cp) => sum + cp.netAmount, 0);
+      return acc + claims + cash;
+    }, 0);
+
+    return { total, emergency, scheduled, totalEstimatedCost, totalRealCost, costInProgress, costPaid, costPendingPayment };
   }, [cases]);
 
   const handleAddCase = (newCase: RefugeeCase) => {
@@ -108,6 +137,8 @@ export default function App() {
     { id: 'dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
     { id: 'new-case', label: 'تسجيل حالة جديدة', icon: PlusCircle },
     { id: 'case-list', label: 'إدارة الحالات', icon: Users },
+    { id: 'claims', label: 'المطالبات الطبية', icon: ClipboardList },
+    { id: 'cash', label: 'إدارة الكاش', icon: DollarSign },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ];
 
@@ -224,6 +255,8 @@ export default function App() {
                   currentUser={currentUser}
                 />
               )}
+              {view === 'claims' && <ClaimsManagement cases={cases} onUpdateCase={handleUpdateCase} currentUser={currentUser} />}
+              {view === 'cash' && <CashManagement cases={cases} onUpdateCase={handleUpdateCase} currentUser={currentUser} />}
               {view === 'settings' && (
                 <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
                   <Settings className="w-16 h-16 text-slate-300 mb-4" />

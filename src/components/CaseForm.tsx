@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefugeeCase, CaseType, Gender, CaseStatus, Priority, User as AppUser, Attachment } from '../types';
+import { RefugeeCase, CaseType, Gender, CaseStatus, Priority, User as AppUser, Attachment, MedicalClaim, CashPayment } from '../types';
 import { 
   User, 
   Search, 
@@ -30,31 +30,121 @@ import { cn } from '../lib/utils';
 interface CaseFormProps {
   onSubmit: (data: RefugeeCase) => void;
   currentUser: AppUser;
+  initialCase?: RefugeeCase;
+  onCancel?: () => void;
 }
 
-export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
+// Sub-components moved outside to prevent focus loss during re-renders
+const InputLabel = ({ label, required, error }: any) => (
+  <div className="flex flex-col gap-1">
+    <label className="label-caps">
+      {label}
+      {required && <span className="text-rose-500 mr-1">*</span>}
+    </label>
+    {error && <span className="text-[9px] text-rose-500 font-bold mb-1">{error}</span>}
+  </div>
+);
+
+const Section = ({ title, icon: Icon, children }: any) => (
+  <div className="space-y-4">
+    <div className="flex items-center gap-2 pb-2 border-b border-slate-100 mb-6">
+      <Icon className="w-4 h-4 text-brand-primary" />
+      <h3 className="text-xs font-black text-slate-800 uppercase tracking-[0.2em]">{title}</h3>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {children}
+    </div>
+  </div>
+);
+
+export default function CaseForm({ onSubmit, currentUser, initialCase, onCancel }: CaseFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<Partial<RefugeeCase>>({
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Partial<RefugeeCase>>(initialCase || {
     type: 'emergency',
     gender: 'Male',
     status: 'Pending',
     priority: 'Medium',
     medicalApprovalStatus: 'Pending',
+    paymentType: 'Claim',
     improved: false,
     admissionDate: new Date().toISOString().split('T')[0],
     attachments: [],
+    medicalClaims: [],
   });
+
+  const isEdit = !!initialCase;
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.fullName?.trim()) newErrors.fullName = 'الاسم الكامل مطلوب';
+    if (!formData.unhcrId?.trim()) newErrors.unhcrId = 'رقم المفوضية مطلوب';
+    if (!formData.nationality) newErrors.nationality = 'الجنسية مطلوبة';
+    if (!formData.assignedTo) newErrors.assignedTo = 'يجب تعيين موظف للمتابعة';
+    if (!formData.diagnosis?.trim()) newErrors.diagnosis = 'التشخيص المبدئي مطلوب';
+    if (!formData.hospital?.trim()) newErrors.hospital = 'اسم المستشفى مطلوب';
+    if (!formData.bookingEntity?.trim()) newErrors.bookingEntity = 'جهة الحجز مطلوبة';
+    if (!formData.mobileNumber?.trim()) {
+      newErrors.mobileNumber = 'رقم الهاتف مطلوب';
+    } else if (!/^01[0125][0-9]{8}$/.test(formData.mobileNumber)) {
+      newErrors.mobileNumber = 'رقم هاتف مصري غير صحيح (مطلوب 11 رقم ببدابة 01)';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
   const [showMedicalReport, setShowMedicalReport] = useState(false);
   const [attachmentForm, setAttachmentForm] = useState<{ name: string; url: string; category: 'Medical' | 'Social' }>({ 
     name: '', 
     url: '', 
     category: 'Medical' 
   });
+  
+  const [claimServices, setClaimServices] = useState<{ name: string; cost: number; discount: number; id: string }[]>([]);
+  const [currentService, setCurrentService] = useState({ name: '', cost: 0, discount: 0 });
+
+  const [scheduledItems, setScheduledItems] = useState<{ name: string; plannedDate: string; id: string }[]>([]);
+  const [currentScheduledItem, setCurrentScheduledItem] = useState({ name: '', plannedDate: '' });
+
+  const addScheduledItem = () => {
+    if (currentScheduledItem.name && currentScheduledItem.plannedDate) {
+      setScheduledItems([...scheduledItems, { ...currentScheduledItem, id: Math.random().toString(36).substr(2, 9) }]);
+      setCurrentScheduledItem({ name: '', plannedDate: '' });
+    }
+  };
+
+  const removeScheduledItem = (id: string) => {
+    setScheduledItems(scheduledItems.filter(s => s.id !== id));
+  };
+
+  const addServiceItem = () => {
+    if (currentService.name && currentService.cost >= 0) {
+      setClaimServices([...claimServices, { ...currentService, id: Math.random().toString(36).substr(2, 9) }]);
+      setCurrentService({ name: '', cost: 0, discount: 0 });
+    }
+  };
+
+  const removeServiceItem = (id: string) => {
+    setClaimServices(claimServices.filter(s => s.id !== id));
+  };
+
+  const totalGross = claimServices.reduce((sum, s) => sum + s.cost, 0);
+  const totalNet = claimServices.reduce((sum, s) => sum + (s.cost * (1 - s.discount / 100)), 0);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'number' ? parseFloat(value) : value;
     setFormData(prev => ({ ...prev, [name]: val }));
+
+    // Clear error when user types
+    if (errors[name]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
   };
 
   const handleAddAttachment = () => {
@@ -83,8 +173,7 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.assignedTo) {
-      alert('يرجى تعيين الحالة لموظف قبل الحفظ');
+    if (!validate()) {
       return;
     }
 
@@ -92,55 +181,105 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
 
     // Simulate network delay for better UX and progress visibility
     setTimeout(() => {
-      const newCase: RefugeeCase = {
-        ...formData as any,
-        id: Math.random().toString(36).substr(2, 9),
-        createdAt: new Date().toISOString(),
-        services: [],
-        costBreakdown: {
-          medication: 0,
-          consultation: 0,
-          procedure: 0,
-          other: 0
-        },
-        history: [
-          {
+      if (isEdit) {
+        const historyEntry = {
+          date: new Date().toISOString(),
+          action: 'تعديل بيانات الحالة',
+          details: 'تم تحديث بيانات المريض الأساسية بواسطة الموظف المسؤول',
+          user: currentUser.name
+        };
+        const updatedCase: RefugeeCase = {
+          ...initialCase!,
+          ...formData as any,
+          history: [historyEntry, ...(initialCase!.history || [])]
+        };
+        onSubmit(updatedCase);
+      } else {
+        const medicalClaims: MedicalClaim[] = [];
+        const cashPayments: CashPayment[] = [];
+        
+        if (formData.paymentType === 'Claim') {
+          medicalClaims.push({
+            id: Math.random().toString(36).substr(2, 9),
             date: new Date().toISOString(),
-            action: 'تسجيل الحالة',
-            details: `تم إنشاء ملف الحالة الجديد في النظام وتعيينه إلى ${formData.assignedTo || 'غير محدد'}`,
-            user: currentUser.name
-          }
-        ]
-      };
-      onSubmit(newCase);
+            serviceName: formData.diagnosis || 'Medical Service Claim',
+            provider: formData.hospital || 'Hospital Provider',
+            totalAmount: 0,
+            discountPercentage: 0,
+            netAmount: 0,
+            status: 'Registered',
+            includedServices: [],
+            lineItems: [],
+            history: [{
+              date: new Date().toISOString(),
+              action: 'تسجيل مطالبة أولية',
+              details: 'تم إنشاء مسودة المطالبة عند تسجيل الحالة. يرجى إضافة البنود المالية من قسم المطالبات.',
+              user: currentUser.name
+            }]
+          });
+        } else if (formData.paymentType === 'Cash') {
+          cashPayments.push({
+            id: Math.random().toString(36).substr(2, 9),
+            date: new Date().toISOString(),
+            serviceName: formData.diagnosis || 'Cash Service Payment',
+            provider: formData.hospital || 'Provider',
+            totalAmount: 0,
+            discountPercentage: 0,
+            netAmount: 0,
+            status: 'Registered',
+            includedServices: [],
+            lineItems: [],
+            history: [{
+              date: new Date().toISOString(),
+              action: 'تسجيل دفع كاش أولي',
+              details: 'تم إنشاء مسودة الدفع الكاش عند تسجيل الحالة. يرجى إضافة البنود المالية من قسم إدارة الكاش.',
+              user: currentUser.name
+            }]
+          });
+        }
+
+        const newCase: RefugeeCase = {
+          ...formData as any,
+          id: Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          services: [],
+          medicalClaims: medicalClaims,
+          cashPayments: cashPayments,
+          serviceSchedule: formData.type === 'scheduled' ? scheduledItems.map(item => ({
+            ...item,
+            status: 'Planned'
+          })) : [],
+          followUps: [],
+          costBreakdown: {
+            medication: 0,
+            consultation: 0,
+            procedure: 0,
+            other: 0
+          },
+          history: [
+            {
+              date: new Date().toISOString(),
+              action: 'تسجيل الحالة',
+              details: `تم إنشاء ملف الحالة الجديد في النظام وتعيينه إلى ${formData.assignedTo || 'غير محدد'}`,
+              user: currentUser.name
+            }
+          ]
+        };
+        onSubmit(newCase);
+      }
       setIsSubmitting(false);
     }, 1500);
   };
 
-  const Section = ({ title, icon: Icon, children }: any) => (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 pb-2 border-b border-slate-100 mb-6">
-        <Icon className="w-4 h-4 text-brand-primary" />
-        <h3 className="text-xs font-black text-slate-800 uppercase tracking-[0.2em]">{title}</h3>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {children}
-      </div>
-    </div>
-  );
-
-  const InputLabel = ({ label, required }: any) => (
-    <label className="label-caps">
-      {label}
-      {required && <span className="text-rose-500 mr-1">*</span>}
-    </label>
-  );
-
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 mb-8">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">تسجيل حالة جديدة</h1>
-        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Medical Intake Form & Resource Allocation</p>
+        <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">
+          {isEdit ? 'تعديل بيانات الحالة' : 'تسجيل حالة جديدة'}
+        </h1>
+        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">
+          {isEdit ? 'Update Refugee Profile & Medical Record' : 'Medical Intake Form & Resource Allocation'}
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-12 pb-20">
@@ -199,16 +338,17 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
           {/* Section 1: Basic Information */}
           <Section title="البيانات الشخصية والتعريفية" icon={User}>
             <div>
-              <InputLabel label="الاسم الكامل" required />
+              <InputLabel label="الاسم الكامل" required error={errors.fullName} />
               <input 
                 type="text" name="fullName" required 
-                className="input-field" placeholder="Full Registered Name"
+                className={cn("input-field", errors.fullName && "border-rose-300 bg-rose-50")} placeholder="Full Registered Name"
+                value={formData.fullName || ''}
                 onChange={handleChange}
               />
             </div>
             <div>
-              <InputLabel label="الجنسية" required />
-              <select name="nationality" className="input-field" onChange={handleChange} required>
+              <InputLabel label="الجنسية" required error={errors.nationality} />
+              <select name="nationality" className={cn("input-field", errors.nationality && "border-rose-300 bg-rose-50")} onChange={handleChange} required value={formData.nationality || ''}>
                 <option value="">اختر الجنسية</option>
                 <option value="السودان">السودان</option>
                 <option value="سوريا">سوريا</option>
@@ -217,8 +357,8 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
               </select>
             </div>
             <div>
-              <InputLabel label="المسؤول المباشر" required />
-              <select name="assignedTo" className="input-field" onChange={handleChange} required>
+              <InputLabel label="المسؤول المباشر" required error={errors.assignedTo} />
+              <select name="assignedTo" className={cn("input-field", errors.assignedTo && "border-rose-300 bg-rose-50")} onChange={handleChange} required value={formData.assignedTo || ''}>
                 <option value="">اختر موظف</option>
                 <option value="أحمد الفارسي">أحمد الفارسي</option>
                 <option value="سارة محمد">سارة محمد</option>
@@ -255,17 +395,31 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
             </div>
             <div>
               <InputLabel label="العمر" />
-              <input type="number" name="age" className="input-field" onChange={handleChange} />
+              <input type="number" name="age" className="input-field" onChange={handleChange} value={formData.age || ''} />
             </div>
             <div>
               <InputLabel label="الوضع القانوني" />
-              <input type="text" name="legalStatus" className="input-field" placeholder="طالب لجوء / لاجئ معترف به" onChange={handleChange} />
+              <input type="text" name="legalStatus" className="input-field" placeholder="طالب لجوء / لاجئ معترف به" onChange={handleChange} value={formData.legalStatus || ''} />
             </div>
             <div>
               <InputLabel label="الموقع الحالي" />
               <div className="relative">
                 <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input type="text" name="currentLocation" className="input-field pr-10" placeholder="المدينة / الحي" onChange={handleChange} />
+                <input type="text" name="currentLocation" className="input-field pr-10" placeholder="المدينة / الحي" onChange={handleChange} value={formData.currentLocation || ''} />
+              </div>
+            </div>
+            <div>
+              <InputLabel label="تحسن الحالة (Improved Status)" />
+              <div className="flex items-center gap-2 h-10 mt-1">
+                <input 
+                  type="checkbox" 
+                  name="improved" 
+                  id="improved-checkbox"
+                  className="w-4 h-4 rounded border-slate-200 text-brand-primary focus:ring-brand-primary cursor-pointer" 
+                  checked={formData.improved}
+                  onChange={(e) => setFormData({...formData, improved: e.target.checked})} 
+                />
+                <label htmlFor="improved-checkbox" className="text-xs font-bold text-slate-600 cursor-pointer">هل طرأ تحسن على الحالة؟</label>
               </div>
             </div>
           </Section>
@@ -273,35 +427,46 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
           {/* Section 2: UNHCR Details */}
           <Section title="بيانات المفوضية" icon={CreditCard}>
             <div>
-              <InputLabel label="رقم المفوضية (UNHCR ID)" required />
-              <input type="text" name="unhcrId" required className="input-field font-mono" placeholder="555-XX-XXXX" onChange={handleChange} />
+              <InputLabel label="رقم المفوضية (UNHCR ID)" required error={errors.unhcrId} />
+              <input type="text" name="unhcrId" required className={cn("input-field font-mono", errors.unhcrId && "border-rose-300 bg-rose-50")} placeholder="555-XX-XXXX" onChange={handleChange} value={formData.unhcrId || ''} />
             </div>
             <div>
               <InputLabel label="Individual ID" />
-              <input type="text" name="individualId" className="input-field font-mono" onChange={handleChange} />
+              <input type="text" name="individualId" className="input-field font-mono" onChange={handleChange} value={formData.individualId || ''} />
             </div>
             <div>
               <InputLabel label="Submission ID" />
-              <input type="text" name="submissionId" className="input-field font-mono" onChange={handleChange} />
+              <input type="text" name="submissionId" className="input-field font-mono" onChange={handleChange} value={formData.submissionId || ''} />
             </div>
           </Section>
 
           {/* Section 3: Medical Information */}
           <Section title="المعلومات الطبية الأساسية" icon={Stethoscope}>
             <div className="md:col-span-2">
-              <InputLabel label="التشخيص المبدئي" required />
-              <textarea name="diagnosis" required className="input-field resize-none h-20" placeholder="وصف الحالة المبدئي..." onChange={handleChange}></textarea>
+              <InputLabel label="التشخيص المبدئي" required error={errors.diagnosis} />
+              <textarea 
+                name="diagnosis" 
+                required 
+                className={cn("input-field resize-none min-h-[150px] leading-relaxed", errors.diagnosis && "border-rose-300 bg-rose-50")} 
+                placeholder="وصف الحالة المبدئي، التاريخ المرضي، وتفاصيل التشخيص... (اضغط Enter لنزول سطر جديد)" 
+                onChange={handleChange} 
+                value={formData.diagnosis || ''}
+              ></textarea>
             </div>
             <div className="md:col-span-1">
-              <InputLabel label="المستشفى" required />
+              <InputLabel label="المستشفى" required error={errors.hospital} />
               <div className="relative">
                 <Building className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input type="text" name="hospital" required className="input-field pr-10" placeholder="اسم المستشفى" onChange={handleChange} />
+                <input type="text" name="hospital" required className={cn("input-field pr-10", errors.hospital && "border-rose-300 bg-rose-50")} placeholder="اسم المستشفى" onChange={handleChange} value={formData.hospital || ''} />
               </div>
             </div>
             <div className="md:col-span-1">
-              <InputLabel label="جهة الحجز" required />
-              <input type="text" name="bookingEntity" required className="input-field" placeholder="الجهة التي ستحجز الحالة" onChange={handleChange} />
+              <InputLabel label="جهة الحجز" required error={errors.bookingEntity} />
+              <input type="text" name="bookingEntity" required className={cn("input-field", errors.bookingEntity && "border-rose-300 bg-rose-50")} placeholder="الجهة التي ستحجز الحالة" onChange={handleChange} value={formData.bookingEntity || ''} />
+            </div>
+            <div className="md:col-span-1">
+              <InputLabel label="تاريخ الدخول" />
+              <input type="date" name="admissionDate" className="input-field" onChange={handleChange} value={formData.admissionDate || ''} />
             </div>
             <div className="md:col-span-1">
               <InputLabel label="الموافقة الطبية" required />
@@ -312,6 +477,74 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
               </select>
             </div>
           </Section>
+
+          {/* Service Schedule Section for Scheduled Cases */}
+          {formData.type === 'scheduled' && (
+            <Section title="جدول الخدمات المجدولة" icon={ClipboardList}>
+              <div className="md:col-span-3 space-y-4">
+                <div className="bg-blue-50 p-6 border border-blue-100 rounded-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <InputLabel label="اسم الخدمة المجدولة" />
+                      <input 
+                        type="text" className="input-field" 
+                        placeholder="مثال: جلسة غسيل كلوي، مراجعة دورية..."
+                        value={currentScheduledItem.name}
+                        onChange={(e) => setCurrentScheduledItem({...currentScheduledItem, name: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <InputLabel label="تاريخ الخدمة المتوقع" />
+                      <input 
+                        type="date" className="input-field" 
+                        value={currentScheduledItem.plannedDate}
+                        onChange={(e) => setCurrentScheduledItem({...currentScheduledItem, plannedDate: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={addScheduledItem}
+                    className="btn-secondary w-full py-2 flex items-center justify-center gap-2 font-black uppercase tracking-widest text-[10px]"
+                  >
+                    <Plus size={14} />
+                    إضافة إلى جدول الخدمات
+                  </button>
+                </div>
+
+                {scheduledItems.length > 0 && (
+                  <div className="border border-slate-100 rounded">
+                    <table className="w-full text-[10px] text-right border-collapse">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="p-3 border-b border-slate-100">الخدمة</th>
+                          <th className="p-3 border-b border-slate-100 text-center">التاريخ المجدول</th>
+                          <th className="p-3 border-b border-slate-100 text-center">الحالة</th>
+                          <th className="p-3 border-b border-slate-100"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scheduledItems.map(item => (
+                          <tr key={item.id} className="border-b border-slate-100 last:border-0">
+                            <td className="p-3 font-bold text-slate-700">{item.name}</td>
+                            <td className="p-3 text-center text-slate-500">{item.plannedDate}</td>
+                            <td className="p-3 text-center">
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full font-black uppercase tracking-widest">Planned</span>
+                            </td>
+                            <td className="p-3 text-center">
+                              <button type="button" onClick={() => removeScheduledItem(item.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
 
           {/* Detailed Medical Report (Collapsible) */}
           <div className="space-y-4">
@@ -339,27 +572,29 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
                     <InputLabel label="خطة العلاج المقترحة (Treatment Plan)" />
                     <textarea 
                       name="treatmentPlan" 
-                      className="input-field resize-none h-24" 
-                      placeholder="أدخل تفاصيل خطة العلاج..."
+                      className="input-field resize-none min-h-[120px] leading-relaxed" 
+                      placeholder="أدخل تفاصيل خطة العلاج المقترحة والخطوات القادمة..."
                       onChange={handleChange}
+                      value={formData.treatmentPlan || ''}
                     ></textarea>
                   </div>
                   <div className="md:col-span-2">
-                    <InputLabel label="التاريخ الدوائي (Medication History)" />
+                    <InputLabel label="التاريخ المرضي والدوائي (Medical History)" />
                     <textarea 
                       name="medicationHistory" 
-                      className="input-field resize-none h-24" 
-                      placeholder="أدخل الأدوية الحالية والسابقة..."
+                      className="input-field resize-none min-h-[120px] leading-relaxed" 
+                      placeholder="أدخل التاريخ المرضي بالتفصيل والأدوية الحالية والسابقة والحساسية..."
                       onChange={handleChange}
+                      value={formData.medicationHistory || ''}
                     ></textarea>
                   </div>
                   <div>
                     <InputLabel label="التدخل المطلوب" />
-                    <input type="text" name="intervention" className="input-field" placeholder="عملية / فحوصات / علاج" onChange={handleChange} />
+                    <input type="text" name="intervention" className="input-field" placeholder="عملية / فحوصات / علاج" onChange={handleChange} value={formData.intervention || ''} />
                   </div>
                   <div>
                     <InputLabel label="نوع الخدمة" />
-                    <input type="text" name="service" className="input-field" placeholder="مثال: Ward Admission" onChange={handleChange} />
+                    <input type="text" name="service" className="input-field" placeholder="مثال: Ward Admission" onChange={handleChange} value={formData.service || ''} />
                   </div>
                 </div>
               </div>
@@ -369,16 +604,24 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
           {/* Section 4: Contact & Logistics */}
           <Section title="التواصل والمتابعة" icon={Phone}>
             <div>
-              <InputLabel label="رقم الهاتف" required />
-              <input type="tel" name="mobileNumber" required className="input-field" placeholder="01XXXXXXXXX" onChange={handleChange} />
+              <InputLabel label="رقم الهاتف" required error={errors.mobileNumber} />
+              <input type="tel" name="mobileNumber" required className={cn("input-field", errors.mobileNumber && "border-rose-300 bg-rose-50")} placeholder="01XXXXXXXXX" onChange={handleChange} value={formData.mobileNumber || ''} />
+            </div>
+            <div>
+              <InputLabel label="رقم الهاتف (جهاز الاتصال)" />
+              <input type="tel" name="contactNumber" className="input-field" placeholder="01XXXXXXXXX" onChange={handleChange} value={formData.contactNumber || ''} />
+            </div>
+            <div>
+              <InputLabel label="صلة القرابة" />
+              <input type="text" name="contactRelationship" className="input-field" placeholder="Family / Guardian / Friend" onChange={handleChange} value={formData.contactRelationship || ''} />
             </div>
             <div>
               <InputLabel label="جهة الاتصال" />
-              <input type="text" name="contactPerson" className="input-field" placeholder="اسم الشخص المسؤول" onChange={handleChange} />
+              <input type="text" name="contactPerson" className="input-field" placeholder="اسم الشخص المسؤول" onChange={handleChange} value={formData.contactPerson || ''} />
             </div>
             <div>
               <InputLabel label="طريقة التواصل" />
-              <select name="contactMethod" className="input-field" onChange={handleChange}>
+              <select name="contactMethod" className="input-field" onChange={handleChange} value={formData.contactMethod || ''}>
                 <option value="هاتف">اتصال هاتفي</option>
                 <option value="واتساب">واتساب</option>
                 <option value="بريد">بريد إلكتروني</option>
@@ -389,16 +632,19 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
           {/* Section 5: Financials */}
           <Section title="البيانات المالية" icon={DollarSign}>
             <div>
+              <InputLabel label="نوع الدفع" />
+              <select name="paymentType" className="input-field" onChange={handleChange} value={formData.paymentType || 'Claim'}>
+                <option value="Cash">كاش / Cash</option>
+                <option value="Claim">مطالبة / Claim</option>
+              </select>
+            </div>
+            <div>
               <InputLabel label="التكلفة التقديرية" />
-              <input type="number" name="estimatedCost" className="input-field" placeholder="0.00" onChange={handleChange} />
+              <input type="number" name="estimatedCost" className="input-field" placeholder="0.00" onChange={handleChange} value={formData.estimatedCost || ''} />
             </div>
             <div>
-              <InputLabel label="التكلفة الفعلية" />
-              <input type="number" name="realCost" className="input-field" placeholder="0.00" onChange={handleChange} />
-            </div>
-            <div>
-              <InputLabel label="حالة الطلب" />
-              <select name="status" className="input-field" onChange={handleChange}>
+              <InputLabel label="حالة الملف" />
+              <select name="status" className="input-field" onChange={handleChange} value={formData.status || 'Pending'}>
                 <option value="Pending">قيد الانتظار</option>
                 <option value="Delivered">تم التنفيذ</option>
                 <option value="Cancelled">ملغي</option>
@@ -492,6 +738,7 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
               type="button" 
               className="btn-secondary px-8"
               disabled={isSubmitting}
+              onClick={onCancel}
             >
               إلغاء
             </button>
@@ -508,7 +755,7 @@ export default function CaseForm({ onSubmit, currentUser }: CaseFormProps) {
               ) : (
                 <>
                   <Save size={20} />
-                  حفظ الحالة
+                  {isEdit ? 'تحديث البيانات' : 'حفظ الحالة'}
                 </>
               )}
             </button>
