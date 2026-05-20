@@ -18,7 +18,10 @@ import {
   CheckSquare,
   Square,
   PlusCircle,
-  ClipboardList
+  ClipboardList,
+  Edit,
+  Check,
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -52,6 +55,9 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
   });
 
   const [lineItemForm, setLineItemForm] = useState({ name: '', cost: 0, discount: 0 });
+  const [editingLineItemId, setEditingLineItemId] = useState<string | null>(null);
+  const [editingLineForm, setEditingLineForm] = useState({ name: '', cost: 0, discount: 0 });
+  const [lineItemSearchQuery, setLineItemSearchQuery] = useState('');
 
   const allCashPayments = useMemo(() => {
     const payments: (CashPayment & { patientName: string; caseId: string })[] = [];
@@ -89,6 +95,15 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
       return sortOrder === 'asc' ? comparison : -comparison;
     });
   }, [allCashPayments, searchQuery, statusFilter, sortField, sortOrder]);
+
+  const filteredLineItems = useMemo(() => {
+    if (!editingCashDetails || !editingCashDetails.lineItems) return [];
+    const query = lineItemSearchQuery.trim().toLowerCase();
+    if (!query) return editingCashDetails.lineItems;
+    return editingCashDetails.lineItems.filter(item => 
+      item.name.toLowerCase().includes(query)
+    );
+  }, [editingCashDetails, lineItemSearchQuery]);
 
   const toggleSort = (field: typeof sortField) => {
     if (sortField === field) {
@@ -227,6 +242,49 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
       };
       onUpdateCase(updatedCase);
       setEditingCashDetails({ ...updatedPayment, patientName: editingCashDetails.patientName, caseId: editingCashDetails.caseId });
+    }
+  };
+
+  const handleEditLineItemStart = (item: { id: string; name: string; cost: number; discount: number }) => {
+    setEditingLineItemId(item.id);
+    setEditingLineForm({ name: item.name, cost: item.cost, discount: item.discount });
+  };
+
+  const handleSaveLineItem = (itemId: string) => {
+    if (!editingCashDetails) return;
+
+    const updatedLineItems = (editingCashDetails.lineItems || []).map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          name: editingLineForm.name,
+          cost: editingLineForm.cost,
+          discount: editingLineForm.discount
+        };
+      }
+      return item;
+    });
+
+    const totalAmount = updatedLineItems.reduce((sum, item) => sum + item.cost, 0);
+    const netAmount = updatedLineItems.reduce((sum, item) => sum + (item.cost * (1 - item.discount / 100)), 0);
+
+    const updatedPayment: CashPayment = {
+      ...editingCashDetails,
+      lineItems: updatedLineItems,
+      totalAmount,
+      netAmount,
+      includedServices: updatedLineItems.map(item => `${item.name} (${item.cost} EGP)`)
+    };
+
+    const targetCase = cases.find(c => c.id === editingCashDetails.caseId);
+    if (targetCase) {
+      const updatedCase: RefugeeCase = {
+        ...targetCase,
+        cashPayments: (targetCase.cashPayments || []).map(p => p.id === updatedPayment.id ? updatedPayment : p)
+      };
+      onUpdateCase(updatedCase);
+      setEditingCashDetails({ ...updatedPayment, patientName: editingCashDetails.patientName, caseId: editingCashDetails.caseId });
+      setEditingLineItemId(null);
     }
   };
 
@@ -484,7 +542,7 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                   </div>
                 </div>
               </div>
-              <button onClick={() => setEditingCashDetails(null)} className="p-2 hover:bg-white/10 rounded transition-colors text-white/60">
+              <button onClick={() => { setEditingCashDetails(null); setLineItemSearchQuery(''); }} className="p-2 hover:bg-white/10 rounded transition-colors text-white/60">
                 <Plus className="rotate-45" size={24} />
               </button>
             </div>
@@ -578,53 +636,200 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                     </div>
 
                     <div className="space-y-4 pt-4 border-t border-slate-100">
-                      <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                         تفاصيل بنود الخدمة (Line Items)
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded border border-slate-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2 border-b-2 border-emerald-600 pb-1">
+                          <span>تفاصيل بنود الخدمة (Line Items)</span>
+                          <span className="text-[10px] bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded-full font-bold">
+                            {(editingCashDetails.lineItems || []).length} بنود
+                          </span>
+                        </h4>
+
+                        {/* Search Input for Line Items */}
+                        {(editingCashDetails.lineItems || []).length > 0 && (
+                          <div className="relative w-full sm:w-72">
+                            <input
+                              type="text"
+                              className="w-full bg-white border border-slate-200 rounded-lg pr-9 pl-8 py-2 text-xs outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-800 transition-all font-medium placeholder:text-slate-400 shadow-sm"
+                              placeholder="البحث في بنود الخدمة..."
+                              value={lineItemSearchQuery}
+                              onChange={(e) => setLineItemSearchQuery(e.target.value)}
+                            />
+                            <Search className="absolute right-3 top-3 text-slate-400" size={13} />
+                            {lineItemSearchQuery && (
+                              <button
+                                onClick={() => setLineItemSearchQuery('')}
+                                className="absolute left-3 top-2.5 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded border border-slate-100 shadow-inner">
                         <div className="md:col-span-2">
-                          <label className="label-caps mb-1 block">اسم البند</label>
-                          <input type="text" className="input-field" value={lineItemForm.name} onChange={(e) => setLineItemForm({...lineItemForm, name: e.target.value})} />
+                          <label className="label-caps mb-1 block text-slate-600">اسم البند</label>
+                          <input type="text" className="input-field" placeholder="مثال: تحليل دم، أشعة سينية..." value={lineItemForm.name} onChange={(e) => setLineItemForm({...lineItemForm, name: e.target.value})} />
                         </div>
                         <div>
-                          <label className="label-caps mb-1 block">التكلفة</label>
-                          <input type="number" className="input-field" value={lineItemForm.cost || ''} onChange={(e) => setLineItemForm({...lineItemForm, cost: parseFloat(e.target.value) || 0})} />
+                          <label className="label-caps mb-1 block text-slate-600">التكلفة (EGP)</label>
+                          <input type="number" className="input-field text-center font-bold text-slate-800" value={lineItemForm.cost || ''} onChange={(e) => setLineItemForm({...lineItemForm, cost: parseFloat(e.target.value) || 0})} />
                         </div>
                         <div>
-                          <label className="label-caps mb-1 block">الخصم %</label>
-                          <input type="number" className="input-field" value={lineItemForm.discount || ''} onChange={(e) => setLineItemForm({...lineItemForm, discount: parseFloat(e.target.value) || 0})} />
+                          <label className="label-caps mb-1 block text-slate-600">الخصم %</label>
+                          <input type="number" className="input-field text-center font-bold text-rose-500" value={lineItemForm.discount || ''} onChange={(e) => setLineItemForm({...lineItemForm, discount: parseFloat(e.target.value) || 0})} />
                         </div>
                       </div>
                       <button 
                         onClick={handleAddLineItem} 
-                        className="btn-primary w-full py-3 bg-slate-900 border-none shadow-none hover:bg-slate-800"
+                        className="btn-primary w-full py-3 bg-slate-900 border-none shadow-md hover:bg-slate-800 transition-all flex items-center justify-center gap-2 hover:translate-y-[-1px] font-bold"
                       >
-                        إضافة بند مالي جديد للقائمة
+                        <PlusCircle size={16} />
+                        <span>إضافة بند مالي جديد للقائمة</span>
                       </button>
                     </div>
 
-                    <div className="overflow-hidden border border-slate-100 rounded bg-white">
+                    {/* Calculated Summary Panel for Line Items */}
+                    {(editingCashDetails.lineItems || []).length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl border border-dashed border-slate-200 bg-emerald-50/20 shadow-sm">
+                        <div className="text-right border-l border-slate-100 pl-4">
+                          <span className="text-[10px] text-slate-400 block font-bold mb-1">عدد البنود المضافة</span>
+                          <span className="text-sm font-black text-slate-800">{(editingCashDetails.lineItems || []).length} بنود</span>
+                        </div>
+                        <div className="text-right border-l border-slate-100 pl-4">
+                          <span className="text-[10px] text-slate-400 block font-bold mb-1">الإجمالي قبل الخصم</span>
+                          <span className="text-sm font-black text-slate-900 bg-slate-100/60 px-2 py-0.5 rounded">
+                            {(editingCashDetails.lineItems || []).reduce((sum, item) => sum + item.cost, 0).toLocaleString()} EGP
+                          </span>
+                        </div>
+                        <div className="text-right border-l border-slate-100 pl-4">
+                          <span className="text-[10px] text-slate-400 block font-bold mb-1">إجمالي الخصومات</span>
+                          <span className="text-sm font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                            {((editingCashDetails.lineItems || []).reduce((sum, item) => sum + item.cost, 0) - (editingCashDetails.lineItems || []).reduce((sum, item) => sum + (item.cost * (1 - item.discount / 100)), 0)).toLocaleString()} EGP
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block font-bold mb-1">الصافي الكلي للبنود</span>
+                          <span className="text-sm font-black text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded">
+                            {(editingCashDetails.lineItems || []).reduce((sum, item) => sum + (item.cost * (1 - item.discount / 100)), 0).toLocaleString()} EGP
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="overflow-hidden border border-slate-100 rounded-lg bg-white shadow-sm">
                       <table className="w-full text-right text-[12px] border-collapse">
                         <thead className="bg-slate-900 text-white">
                           <tr>
-                            <th className="p-4">البند</th>
+                            <th className="p-4 rounded-rt-lg">البند</th>
                             <th className="p-4 text-center">التكلفة</th>
+                            <th className="p-4 text-center">الخصم %</th>
                             <th className="p-4 text-center">الصافي</th>
-                            <th className="p-4"></th>
+                            <th className="p-4 text-center rounded-lt-lg">الإجراءات</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(editingCashDetails.lineItems || []).map(item => (
-                            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                              <td className="p-4 font-bold">{item.name}</td>
-                              <td className="p-4 text-center text-slate-500">{item.cost.toLocaleString()} EGP</td>
-                              <td className="p-4 text-center text-emerald-600 font-black">{(item.cost * (1 - item.discount / 100)).toLocaleString()} EGP</td>
-                              <td className="p-4 text-center"><button onClick={() => handleRemoveLineItem(item.id)} className="text-rose-400 hover:text-rose-600 p-2"><Trash2 size={16} /></button></td>
+                          {filteredLineItems.map(item => (
+                            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                              {editingLineItemId === item.id ? (
+                                <>
+                                  <td className="p-3">
+                                    <input 
+                                      type="text" 
+                                      className="input-field py-1.5 text-xs w-full font-medium" 
+                                      value={editingLineForm.name} 
+                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, name: e.target.value })} 
+                                    />
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <input 
+                                      type="number" 
+                                      className="input-field py-1.5 text-xs text-center w-24 mx-auto font-bold" 
+                                      value={editingLineForm.cost || ''} 
+                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, cost: parseFloat(e.target.value) || 0 })} 
+                                    />
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <input 
+                                      type="number" 
+                                      className="input-field py-1.5 text-xs text-center w-16 mx-auto font-bold text-rose-500" 
+                                      value={editingLineForm.discount || ''} 
+                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, discount: parseFloat(e.target.value) || 0 })} 
+                                    />
+                                  </td>
+                                  <td className="p-3 text-center text-emerald-600 font-extrabold text-[13px]">
+                                    {(editingLineForm.cost * (1 - editingLineForm.discount / 100)).toLocaleString()} EGP
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <div className="flex justify-center gap-2">
+                                      <button 
+                                        onClick={() => handleSaveLineItem(item.id)} 
+                                        className="p-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-colors"
+                                        title="حفظ التعديلات"
+                                      >
+                                        <Check size={12} />
+                                        <span>حفظ</span>
+                                      </button>
+                                      <button 
+                                        onClick={() => setEditingLineItemId(null)} 
+                                        className="p-1.5 px-3 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-slate-300"
+                                        title="إلغاء التعديل"
+                                      >
+                                        <X size={12} />
+                                        <span>إلغاء</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="p-4 font-bold text-slate-800">{item.name}</td>
+                                  <td className="p-4 text-center text-slate-600 font-semibold">{item.cost.toLocaleString()} EGP</td>
+                                  <td className="p-4 text-center">
+                                    {(item.discount || 0) > 0 ? (
+                                      <span className="inline-block bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full text-[10px] border border-rose-100">
+                                        خصم {item.discount}%
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 font-medium">-</span>
+                                    )}
+                                  </td>
+                                  <td className="p-4 text-center text-emerald-700 font-black text-[13px]">{((item.cost || 0) * (1 - (item.discount || 0) / 100)).toLocaleString()} EGP</td>
+                                  <td className="p-4 text-center">
+                                    <div className="flex justify-center gap-1.5">
+                                      <button 
+                                        onClick={() => handleEditLineItemStart(item)} 
+                                        className="p-1 px-2.5 bg-slate-50 hover:bg-brand-primary hover:text-white rounded text-slate-500 transition-colors flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
+                                        title="تحديث البند"
+                                      >
+                                        <Edit size={11} />
+                                        <span>تعديل</span>
+                                      </button>
+                                      <button 
+                                        onClick={() => handleRemoveLineItem(item.id)} 
+                                        className="p-1 px-2.5 bg-slate-50 hover:bg-rose-500 hover:text-white rounded text-slate-500 transition-colors flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
+                                        title="حذف البند"
+                                      >
+                                        <Trash2 size={11} />
+                                        <span>حذف</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </>
+                              )}
                             </tr>
                           ))}
                           {(!editingCashDetails.lineItems || editingCashDetails.lineItems.length === 0) && (
                             <tr>
-                              <td colSpan={4} className="p-8 text-center text-slate-300 font-bold uppercase tracking-widest italic" >لا توجد بنود تفصيلية مسجلة</td>
+                              <td colSpan={5} className="p-8 text-center text-slate-300 font-bold uppercase tracking-widest italic" >لا توجد بنود تفصيلية مسجلة</td>
+                            </tr>
+                          )}
+                          {editingCashDetails.lineItems && editingCashDetails.lineItems.length > 0 && filteredLineItems.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="p-8 text-center text-slate-400 font-semibold italic bg-slate-50/50">
+                                لا توجد نتائج للبحث تطابق "{lineItemSearchQuery}"
+                              </td>
                             </tr>
                           )}
                         </tbody>
@@ -634,21 +839,46 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                 </div>
 
                 <div className="space-y-8">
-                  <div className="bg-emerald-900 text-white p-6 rounded shadow-xl space-y-6">
-                    <h4 className="text-xs font-black uppercase tracking-[0.2em] border-b border-white/10 pb-2">سجل المتابعات والتعليقات</h4>
+                  <div className="bg-slate-900 text-white p-6 rounded shadow-xl space-y-6">
+                    <h4 className="text-xs font-black uppercase tracking-[0.2em] border-b border-white/10 pb-2 flex items-center justify-between">
+                      <span>سجل المتابعة والتعقيب</span>
+                      <span className="text-[9px] bg-brand-primary/20 text-brand-primary px-2 py-0.5 rounded font-bold">
+                        {(editingCashDetails.followUps || []).length} تعليقات
+                      </span>
+                    </h4>
                     <div className="space-y-4">
-                      <textarea className="w-full bg-white/5 border border-white/20 rounded p-3 text-xs outline-none focus:border-white/40 h-24" placeholder="أضف ملاحظة حول الدفع الكاش..." value={newCashFollowUp} onChange={(e) => setNewCashFollowUp(e.target.value)} />
-                      <button onClick={handleAddCashFollowUp} className="w-full bg-emerald-500 text-white py-2 text-[10px] font-black uppercase rounded shadow-lg">حفظ الملاحظة</button>
-                      <div className="space-y-4 max-h-[300px] overflow-y-auto pl-2 custom-scrollbar">
-                        {(editingCashDetails.followUps || []).map((fu) => (
-                          <div key={fu.id} className="bg-white/5 border-r-2 border-emerald-400 p-4 text-right">
-                            <div className="flex justify-between items-center opacity-60 text-[8px] font-black mb-1">
-                              <span>{format(new Date(fu.date), 'dd/MM HH:mm')}</span>
-                              <span>بواسطة: {fu.user}</span>
+                      <div className="space-y-2">
+                        <textarea 
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-xs outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary h-24 text-slate-100 placeholder:text-slate-500 transition-all resize-none" 
+                          placeholder="اكتب تعليقًا أو إجرائًا للمتابعة..." 
+                          value={newCashFollowUp} 
+                          onChange={(e) => setNewCashFollowUp(e.target.value)} 
+                        />
+                        <button 
+                          onClick={handleAddCashFollowUp} 
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 text-[10px] font-black uppercase rounded shadow-lg tracking-widest transition-all hover:translate-y-[-1px] active:translate-y-[0px]"
+                        >
+                          إضافة تعليق للمتابعة
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-3 max-h-[350px] overflow-y-auto pl-1 custom-scrollbar">
+                        {[...(editingCashDetails.followUps || [])]
+                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                          .map((fu) => (
+                            <div key={fu.id} className="bg-white/5 hover:bg-white/10 border-r-2 border-emerald-500 p-4 rounded-lg mr-1 transition-all">
+                              <div className="flex justify-between items-center opacity-70 text-[9px] font-black mb-2">
+                                <span className="bg-white/10 px-2 py-0.5 rounded text-emerald-300 font-bold">{fu.user}</span>
+                                <span>{format(new Date(fu.date), 'dd/MM/yyyy HH:mm')}</span>
+                              </div>
+                              <p className="text-xs text-slate-200 leading-relaxed font-medium">{fu.comment}</p>
                             </div>
-                            <p className="text-[11px] text-slate-200">{fu.comment}</p>
+                          ))}
+                        {(!editingCashDetails.followUps || editingCashDetails.followUps.length === 0) && (
+                          <div className="text-center py-8 text-slate-500 text-xs italic">
+                            لا توجد تعليقات متابعة مسجلة حتى الآن.
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                   </div>
@@ -657,7 +887,7 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
             </div>
 
             <div className="p-6 bg-slate-100 flex justify-end">
-              <button onClick={() => setEditingCashDetails(null)} className="bg-emerald-900 text-white px-12 py-3 font-black uppercase tracking-widest text-sm shadow-2xl">إنهاء وإغلاق</button>
+              <button onClick={() => { setEditingCashDetails(null); setLineItemSearchQuery(''); }} className="bg-emerald-900 text-white px-12 py-3 font-black uppercase tracking-widest text-sm shadow-2xl animate-all duration-150 hover:bg-emerald-850">إنهاء وإغلاق</button>
             </div>
           </div>
         </div>
