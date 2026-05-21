@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { RefugeeCase, CashPayment, Priority, User as AppUser, HistoryEntry, FollowUp } from '../types';
 import { 
   DollarSign, 
@@ -21,7 +21,8 @@ import {
   ClipboardList,
   Edit,
   Check,
-  X
+  X,
+  Info
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -33,7 +34,19 @@ interface CashManagementProps {
 }
 
 export default function CashManagement({ cases, onUpdateCase, currentUser }: CashManagementProps) {
+  const isFinancialAuthorized = currentUser.role === 'admin' || currentUser.role === 'financial';
   const [searchQuery, setSearchQuery] = useState('');
+  const [availableDoctors, setAvailableDoctors] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const saved = localStorage.getItem('app_doctors');
+    if (saved) {
+      try {
+        setAvailableDoctors(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sortField, setSortField] = useState<'date' | 'patientName' | 'status' | 'netAmount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -364,6 +377,18 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Cash Payment Management & Tracking</p>
       </div>
 
+      {!isFinancialAuthorized && (
+        <div className="bg-amber-50 rounded-xl border border-dashed border-amber-205 p-4 text-amber-900 text-xs flex items-start gap-3 justify-start text-right">
+          <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-extrabold text-amber-850">🔒 تنبيه الصلاحيات والوصول المقيد (حالة قراءة فقط):</p>
+            <p className="leading-relaxed text-slate-600 font-medium">
+              أنت مسجل حالياً بدور <span className="text-amber-700 font-black">{currentUser.role === 'clinical' ? 'منسق طبي' : 'موظف تسجيل'}</span>. هذا التبويب لإدارة النقدية المباشرة متاح لك <b>للقراءة والاطلاع فقط</b>. كافة إجراءات صرف الكاش، تسجيل معاملات الصيدلية، وتصفية عهدة الدفع تتطلب حساب <b>مسؤول مالي (Financial Officer)</b> أو <b>مدير النظام</b>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Summary Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="glass-card p-6 bg-white border-l-4 border-l-brand-primary">
@@ -387,11 +412,20 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
         </div>
         <div className="glass-card p-6 bg-white border-l-4 border-l-slate-900">
           <button 
-            onClick={() => setShowAddModal(true)}
-            className="w-full h-full flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
+            onClick={() => {
+              if (!isFinancialAuthorized) {
+                alert('عفواً، لا تملك الصلاحية المالية لتسجيل دفعيات كاش جديدة. يرجى الدخول بصفة مسؤول مالي أو مدير النظام.');
+                return;
+              }
+              setShowAddModal(true);
+            }}
+            className={cn(
+              "w-full h-full flex flex-col items-center justify-center gap-2 transition-colors",
+              isFinancialAuthorized ? "hover:bg-slate-50 cursor-pointer" : "opacity-48 cursor-not-allowed bg-slate-50"
+            )}
           >
-            <Plus className="text-brand-primary" size={24} />
-            <span className="text-[10px] font-black uppercase tracking-widest">إضافة معاملة كاش</span>
+            <Plus className={cn(isFinancialAuthorized ? "text-brand-primary" : "text-slate-400")} size={24} />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">إضافة معاملة كاش</span>
           </button>
         </div>
       </div>
@@ -635,21 +669,24 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                       </div>
                     </div>
 
-                    <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <div className="space-y-6 pt-4 border-t border-slate-100">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2 border-b-2 border-emerald-600 pb-1">
-                          <span>تفاصيل بنود الخدمة (Line Items)</span>
-                          <span className="text-[10px] bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded-full font-bold">
-                            {(editingCashDetails.lineItems || []).length} بنود
-                          </span>
-                        </h4>
+                        <div className="space-y-1 text-right">
+                          <h4 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 border-b-2 border-emerald-600 pb-1 w-fit">
+                            <span>تفاصيل بنود الخدمة (Line Items)</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded-full font-bold">
+                              {(editingCashDetails.lineItems || []).length} بنود
+                            </span>
+                          </h4>
+                          <span className="text-[10px] text-slate-400 block font-semibold">💡 انقر مزدوجاً (Double Click) على أي بند في الجدول لتعديله مباشرة</span>
+                        </div>
 
                         {/* Search Input for Line Items */}
                         {(editingCashDetails.lineItems || []).length > 0 && (
                           <div className="relative w-full sm:w-72">
                             <input
                               type="text"
-                              className="w-full bg-white border border-slate-200 rounded-lg pr-9 pl-8 py-2 text-xs outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-800 transition-all font-medium placeholder:text-slate-400 shadow-sm"
+                              className="w-full bg-white border border-slate-200 rounded-lg pr-9 pl-8 py-2 text-xs outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 text-slate-800 transition-all font-medium placeholder:text-slate-400 shadow-sm text-right"
                               placeholder="البحث في بنود الخدمة..."
                               value={lineItemSearchQuery}
                               onChange={(e) => setLineItemSearchQuery(e.target.value)}
@@ -667,32 +704,161 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded border border-slate-100 shadow-inner">
-                        <div className="md:col-span-2">
-                          <label className="label-caps mb-1 block text-slate-600">اسم البند</label>
-                          <input type="text" className="input-field" placeholder="مثال: تحليل دم، أشعة سينية..." value={lineItemForm.name} onChange={(e) => setLineItemForm({...lineItemForm, name: e.target.value})} />
-                        </div>
-                        <div>
-                          <label className="label-caps mb-1 block text-slate-600">التكلفة (EGP)</label>
-                          <input type="number" className="input-field text-center font-bold text-slate-800" value={lineItemForm.cost || ''} onChange={(e) => setLineItemForm({...lineItemForm, cost: parseFloat(e.target.value) || 0})} />
-                        </div>
-                        <div>
-                          <label className="label-caps mb-1 block text-slate-600">الخصم %</label>
-                          <input type="number" className="input-field text-center font-bold text-rose-500" value={lineItemForm.discount || ''} onChange={(e) => setLineItemForm({...lineItemForm, discount: parseFloat(e.target.value) || 0})} />
+                      {/* Presets Quick Fill Option */}
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-150 text-right">
+                        <span className="text-[10px] text-slate-500 font-extrabold block mb-2">⚡ نماذج وتصنيفات سريعة لإدراج البنود بضغطة واحدة:</span>
+                        <div className="flex flex-wrap gap-2 justify-start md:flex-row-reverse">
+                          {[
+                            { name: 'كشف طب وعيادة', cost: 350, discount: 0 },
+                            { name: 'فحص عينة معمل (دم)', cost: 250, discount: 10 },
+                            { name: 'أشعة تشخيصية/موجات', cost: 500, discount: 5 },
+                            { name: 'جلسة طوارئ وتضميد', cost: 150, discount: 0 },
+                            { name: 'عقاقير ووصفة صيدلية', cost: 400, discount: 15 },
+                            { name: 'حجز أسرة وإقامة يوم', cost: 1200, discount: 0 }
+                          ].map((preset, index) => (
+                            <button
+                              key={index}
+                              onClick={() => setLineItemForm({ name: preset.name, cost: preset.cost, discount: preset.discount })}
+                              className="text-[10px] bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 font-bold transition-all shadow-sm"
+                            >
+                              +{preset.name} ({preset.cost} EGP)
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      <button 
-                        onClick={handleAddLineItem} 
-                        className="btn-primary w-full py-3 bg-slate-900 border-none shadow-md hover:bg-slate-800 transition-all flex items-center justify-center gap-2 hover:translate-y-[-1px] font-bold"
-                      >
-                        <PlusCircle size={16} />
-                        <span>إضافة بند مالي جديد للقائمة</span>
-                      </button>
+
+                      {/* Consolidated Add/Preview Layout */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-right">
+                        {/* Dedicated Interactive Form */}
+                        <div className="lg:col-span-2 bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-150 shadow-sm space-y-4">
+                          <h5 className="text-[10px] font-black uppercase text-slate-450 tracking-wider">نموذج إضافة بند جديد</h5>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="label-caps mb-1 block text-slate-600">اسم وصنف البند المالي</label>
+                              <input 
+                                type="text" 
+                                className="input-field shadow-sm bg-white text-right" 
+                                placeholder="مثال: دواء للضغط، أشعة رنين مغناطيسي، شاش وتطهير..." 
+                                value={lineItemForm.name} 
+                                onChange={(e) => setLineItemForm({...lineItemForm, name: e.target.value})} 
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label className="label-caps block text-slate-600">التكلفة والرسوم الأساسية (EGP)</label>
+                                <input 
+                                  type="number" 
+                                  className="input-field text-center font-bold text-slate-800 shadow-sm bg-white" 
+                                  placeholder="0 EGP"
+                                  value={lineItemForm.cost || ''} 
+                                  onChange={(e) => setLineItemForm({...lineItemForm, cost: parseFloat(e.target.value) || 0})} 
+                                />
+                                <div className="flex flex-wrap gap-1 mt-1 justify-center">
+                                  {[50, 100, 500, 1000].map(amt => (
+                                    <button
+                                      key={amt}
+                                      onClick={() => setLineItemForm(prev => ({ ...prev, cost: (prev.cost || 0) + amt }))}
+                                      className="text-[9px] bg-white hover:bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 font-bold transition-all shadow-xs"
+                                    >
+                                      +{amt}
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => setLineItemForm(prev => ({ ...prev, cost: 0 }))}
+                                    className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 px-2.5 py-0.5 rounded border border-rose-200 font-bold transition-all"
+                                  >
+                                    تصفير
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="label-caps block text-slate-600">خصم لهذا البند %</label>
+                                <input 
+                                  type="number" 
+                                  className="input-field text-center font-bold text-rose-500 shadow-sm bg-white" 
+                                  placeholder="0 %"
+                                  value={lineItemForm.discount || ''} 
+                                  onChange={(e) => setLineItemForm({...lineItemForm, discount: parseFloat(e.target.value) || 0})} 
+                                />
+                                <div className="flex flex-wrap gap-1 mt-1 justify-center">
+                                  {[5, 10, 20, 50].map(pct => (
+                                    <button
+                                      key={pct}
+                                      onClick={() => setLineItemForm(prev => ({ ...prev, discount: pct }))}
+                                      className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-700 px-2 py-0.5 rounded border border-rose-200 font-bold transition-all"
+                                    >
+                                      {pct}%
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => setLineItemForm(prev => ({ ...prev, discount: 0 }))}
+                                    className="text-[9px] bg-white hover:bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 font-bold transition-all"
+                                  >
+                                    بلا خصم
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Real-Time Preview Card */}
+                        <div className="bg-emerald-950 text-white p-5 rounded-xl border border-emerald-900 shadow-md flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-black px-2.5 py-1 rounded-md uppercase tracking-wider block w-fit">معاينة مباشرة للبند</span>
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-emerald-400 block font-bold">اسم البند:</span>
+                              <p className="text-xs font-black text-white truncate max-w-full">
+                                {lineItemForm.name.trim() || <span className="text-emerald-500 italic block">يرجى كتابة الاسم...</span>}
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 border-t border-emerald-900/40 pt-2 text-[11px]">
+                              <div>
+                                <span className="text-emerald-400 block font-bold text-[9px]">التكلفة المبدئية</span>
+                                <span className="font-extrabold text-slate-100">{(lineItemForm.cost || 0).toLocaleString()} EGP</span>
+                              </div>
+                              <div>
+                                <span className="text-emerald-400 block font-bold text-[9px]">قيمة الخصم</span>
+                                <span className="font-extrabold text-rose-300">
+                                  {((lineItemForm.cost || 0) * ((lineItemForm.discount || 0) / 100)).toLocaleString()} EGP
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-emerald-900/40 pt-4 mt-4 space-y-4">
+                            <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
+                              <span className="text-[10px] text-emerald-400 font-bold">صافي التكلفة</span>
+                              <span className="text-sm font-black text-emerald-300">
+                                {((lineItemForm.cost || 0) * (1 - (lineItemForm.discount || 0) / 100)).toLocaleString()} EGP
+                              </span>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={handleAddLineItem} 
+                                disabled={!lineItemForm.name || lineItemForm.cost <= 0}
+                                className="flex-1 py-2 px-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:hover:bg-emerald-500 text-white text-[10px] font-black uppercase rounded shadow transition-all flex items-center justify-center gap-1.5"
+                              >
+                                <PlusCircle size={13} />
+                                <span>إضافة البند المعاين</span>
+                              </button>
+                              <button 
+                                onClick={() => setLineItemForm({ name: '', cost: 0, discount: 0 })}
+                                className="p-2 bg-white/10 hover:bg-white/20 text-white rounded transition-all flex items-center justify-center"
+                                title="إلغاء وتفريغ"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Calculated Summary Panel for Line Items */}
                     {(editingCashDetails.lineItems || []).length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl border border-dashed border-slate-200 bg-emerald-50/20 shadow-sm">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl border border-dashed border-slate-200 bg-emerald-50/20 shadow-sm text-right">
                         <div className="text-right border-l border-slate-100 pl-4">
                           <span className="text-[10px] text-slate-400 block font-bold mb-1">عدد البنود المضافة</span>
                           <span className="text-sm font-black text-slate-800">{(editingCashDetails.lineItems || []).length} بنود</span>
@@ -718,111 +884,156 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
                       </div>
                     )}
 
-                    <div className="overflow-hidden border border-slate-100 rounded-lg bg-white shadow-sm">
+                    <div className="overflow-hidden border border-slate-150 rounded-lg bg-white shadow-sm">
                       <table className="w-full text-right text-[12px] border-collapse">
                         <thead className="bg-slate-900 text-white">
                           <tr>
-                            <th className="p-4 rounded-rt-lg">البند</th>
+                            <th className="p-4 rounded-rt-lg text-right">البند</th>
                             <th className="p-4 text-center">التكلفة</th>
                             <th className="p-4 text-center">الخصم %</th>
-                            <th className="p-4 text-center">الصافي</th>
+                            <th className="p-4 text-center">الصافي والمساهمة</th>
                             <th className="p-4 text-center rounded-lt-lg">الإجراءات</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredLineItems.map(item => (
-                            <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                              {editingLineItemId === item.id ? (
-                                <>
-                                  <td className="p-3">
-                                    <input 
-                                      type="text" 
-                                      className="input-field py-1.5 text-xs w-full font-medium" 
-                                      value={editingLineForm.name} 
-                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, name: e.target.value })} 
-                                    />
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <input 
-                                      type="number" 
-                                      className="input-field py-1.5 text-xs text-center w-24 mx-auto font-bold" 
-                                      value={editingLineForm.cost || ''} 
-                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, cost: parseFloat(e.target.value) || 0 })} 
-                                    />
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <input 
-                                      type="number" 
-                                      className="input-field py-1.5 text-xs text-center w-16 mx-auto font-bold text-rose-500" 
-                                      value={editingLineForm.discount || ''} 
-                                      onChange={(e) => setEditingLineForm({ ...editingLineForm, discount: parseFloat(e.target.value) || 0 })} 
-                                    />
-                                  </td>
-                                  <td className="p-3 text-center text-emerald-600 font-extrabold text-[13px]">
-                                    {(editingLineForm.cost * (1 - editingLineForm.discount / 100)).toLocaleString()} EGP
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <div className="flex justify-center gap-2">
-                                      <button 
-                                        onClick={() => handleSaveLineItem(item.id)} 
-                                        className="p-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-colors"
-                                        title="حفظ التعديلات"
-                                      >
-                                        <Check size={12} />
-                                        <span>حفظ</span>
-                                      </button>
-                                      <button 
-                                        onClick={() => setEditingLineItemId(null)} 
-                                        className="p-1.5 px-3 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-slate-300"
-                                        title="إلغاء التعديل"
-                                      >
-                                        <X size={12} />
-                                        <span>إلغاء</span>
-                                      </button>
-                                    </div>
-                                  </td>
-                                </>
-                              ) : (
-                                <>
-                                  <td className="p-4 font-bold text-slate-800">{item.name}</td>
-                                  <td className="p-4 text-center text-slate-600 font-semibold">{item.cost.toLocaleString()} EGP</td>
-                                  <td className="p-4 text-center">
-                                    {(item.discount || 0) > 0 ? (
-                                      <span className="inline-block bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full text-[10px] border border-rose-100">
-                                        خصم {item.discount}%
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-400 font-medium">-</span>
-                                    )}
-                                  </td>
-                                  <td className="p-4 text-center text-emerald-700 font-black text-[13px]">{((item.cost || 0) * (1 - (item.discount || 0) / 100)).toLocaleString()} EGP</td>
-                                  <td className="p-4 text-center">
-                                    <div className="flex justify-center gap-1.5">
-                                      <button 
-                                        onClick={() => handleEditLineItemStart(item)} 
-                                        className="p-1 px-2.5 bg-slate-50 hover:bg-brand-primary hover:text-white rounded text-slate-500 transition-colors flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
-                                        title="تحديث البند"
-                                      >
-                                        <Edit size={11} />
-                                        <span>تعديل</span>
-                                      </button>
-                                      <button 
-                                        onClick={() => handleRemoveLineItem(item.id)} 
-                                        className="p-1 px-2.5 bg-slate-50 hover:bg-rose-500 hover:text-white rounded text-slate-500 transition-colors flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
-                                        title="حذف البند"
-                                      >
-                                        <Trash2 size={11} />
-                                        <span>حذف</span>
-                                      </button>
-                                    </div>
-                                  </td>
-                                </>
-                              )}
-                            </tr>
-                          ))}
+                          {filteredLineItems.map(item => {
+                            const itemNet = item.cost * (1 - (item.discount || 0) / 100);
+                            const totalNetOfAll = (editingCashDetails.lineItems || []).reduce((sum, it) => sum + (it.cost * (1 - (it.discount || 0) / 100)), 0);
+                            const ratioPct = totalNetOfAll > 0 ? (itemNet / totalNetOfAll) * 100 : 0;
+
+                            return (
+                              <tr 
+                                key={item.id} 
+                                onDoubleClick={() => {
+                                  if (editingLineItemId !== item.id) {
+                                    handleEditLineItemStart(item);
+                                  }
+                                }} 
+                                className={cn(
+                                  "border-b border-slate-100 hover:bg-slate-50/80 transition-colors cursor-pointer group",
+                                  editingLineItemId === item.id ? "bg-amber-50/30 font-semibold border-r-4 border-r-amber-500" : ""
+                                )}
+                                title="انقر مزدوجًا لتعديل هذا البند بسرعة"
+                              >
+                                {editingLineItemId === item.id ? (
+                                  <>
+                                    <td className="p-3">
+                                      <input 
+                                        type="text" 
+                                        className="input-field py-1.5 text-xs w-full font-medium text-right" 
+                                        value={editingLineForm.name} 
+                                        onChange={(e) => setEditingLineForm({ ...editingLineForm, name: e.target.value })} 
+                                      />
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <input 
+                                          type="number" 
+                                          className="input-field py-1 text-xs text-center w-24 mx-auto font-bold" 
+                                          value={editingLineForm.cost || ''} 
+                                          onChange={(e) => setEditingLineForm({ ...editingLineForm, cost: parseFloat(e.target.value) || 0 })} 
+                                        />
+                                        <div className="flex gap-1">
+                                          <button onClick={() => setEditingLineForm(f => ({ ...f, cost: f.cost + 50 }))} className="text-[8px] bg-slate-100 hover:bg-slate-200 px-1 rounded font-bold">+50</button>
+                                          <button onClick={() => setEditingLineForm(f => ({ ...f, cost: f.cost + 100 }))} className="text-[8px] bg-slate-100 hover:bg-slate-200 px-1 rounded font-bold">+100</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <input 
+                                          type="number" 
+                                          className="input-field py-1 text-xs text-center w-16 mx-auto font-bold text-rose-500" 
+                                          value={editingLineForm.discount || ''} 
+                                          onChange={(e) => setEditingLineForm({ ...editingLineForm, discount: parseFloat(e.target.value) || 0 })} 
+                                        />
+                                        <div className="flex gap-1">
+                                          <button onClick={() => setEditingLineForm(f => ({ ...f, discount: 10 }))} className="text-[8px] bg-rose-55 px-1 rounded text-rose-700 font-bold">10%</button>
+                                          <button onClick={() => setEditingLineForm(f => ({ ...f, discount: 20 }))} className="text-[8px] bg-rose-55 px-1 rounded text-rose-700 font-bold">20%</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="p-3 text-center text-emerald-600 font-extrabold text-[13px] direction-ltr">
+                                      {(editingLineForm.cost * (1 - editingLineForm.discount / 100)).toLocaleString()} EGP
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="flex justify-center gap-2">
+                                        <button 
+                                          onClick={() => handleSaveLineItem(item.id)} 
+                                          className="p-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-colors"
+                                          title="حفظ التعديلات"
+                                        >
+                                          <Check size={12} />
+                                          <span>حفظ</span>
+                                        </button>
+                                        <button 
+                                          onClick={() => setEditingLineItemId(null)} 
+                                          className="p-1.5 px-3 bg-slate-150 hover:bg-slate-200 text-slate-705 rounded text-[10px] font-bold flex items-center gap-1 transition-colors border border-slate-300"
+                                          title="إلغاء التعديل"
+                                        >
+                                          <X size={12} />
+                                          <span>إلغاء</span>
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="p-4 font-bold text-slate-800 text-right">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
+                                        <span>{item.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="p-4 text-center text-slate-650 font-semibold">{item.cost.toLocaleString()} EGP</td>
+                                    <td className="p-4 text-center">
+                                      {(item.discount || 0) > 0 ? (
+                                        <span className="inline-block bg-rose-50 text-rose-750 font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-rose-100">
+                                          خصم {item.discount}%
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-medium">-</span>
+                                      )}
+                                    </td>
+                                    <td className="p-4 text-center font-bold">
+                                      <div className="flex flex-col gap-1 w-32 mx-auto">
+                                        <div className="flex justify-between items-center text-xs">
+                                          <span className="text-emerald-700 font-black">{itemNet.toLocaleString()} EGP</span>
+                                          <span className="text-[8px] text-slate-400 font-extrabold font-mono">{ratioPct.toFixed(0)}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden" title={`${ratioPct.toFixed(1)}% من الإجمالي`}>
+                                          <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${ratioPct}%` }} />
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                      <div className="flex justify-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={() => handleEditLineItemStart(item)} 
+                                          className="p-1 px-2.5 bg-slate-50 hover:bg-brand-primary hover:text-white rounded text-slate-500 transition-all flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
+                                          title="تحديث البند"
+                                        >
+                                          <Edit size={11} />
+                                          <span>تعديل</span>
+                                        </button>
+                                        <button 
+                                          onClick={() => handleRemoveLineItem(item.id)} 
+                                          className="p-1 px-2.5 bg-slate-50 hover:bg-rose-500 hover:text-white rounded text-slate-500 transition-all flex items-center gap-1 text-[10px] font-bold shadow-sm border border-slate-200"
+                                          title="حذف البند"
+                                        >
+                                          <Trash2 size={11} />
+                                          <span>حذف</span>
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </>
+                                )}
+                              </tr>
+                            );
+                          })}
                           {(!editingCashDetails.lineItems || editingCashDetails.lineItems.length === 0) && (
                             <tr>
-                              <td colSpan={5} className="p-8 text-center text-slate-300 font-bold uppercase tracking-widest italic" >لا توجد بنود تفصيلية مسجلة</td>
+                              <td colSpan={5} className="p-8 text-center text-slate-350 font-bold uppercase tracking-widest italic" >لا توجد بنود تفصيلية مسجلة</td>
                             </tr>
                           )}
                           {editingCashDetails.lineItems && editingCashDetails.lineItems.length > 0 && filteredLineItems.length === 0 && (
@@ -916,7 +1127,19 @@ export default function CashManagement({ cases, onUpdateCase, currentUser }: Cas
               </div>
               <div>
                 <label className="label-caps mb-1 block">المزود (اختياري)</label>
-                <input type="text" className="input-field" placeholder="مثال: صيدلية كير" value={cashForm.provider} onChange={(e) => setCashForm({...cashForm, provider: e.target.value})} />
+                <input 
+                  type="text" 
+                  className="input-field shadow-sm" 
+                  placeholder="مثال: د. جلال البحيري" 
+                  value={cashForm.provider} 
+                  onChange={(e) => setCashForm({...cashForm, provider: e.target.value})} 
+                  list="cash-providers-list"
+                />
+                <datalist id="cash-providers-list">
+                  {availableDoctors.map((doc, idx) => (
+                    <option key={idx} value={`${doc.name} (${doc.hospital})`} />
+                  ))}
+                </datalist>
               </div>
 
               <div className="md:col-span-2 space-y-4 pt-4 border-t border-slate-100">

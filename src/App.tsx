@@ -27,6 +27,7 @@ import CaseForm from './components/CaseForm';
 import CaseList from './components/CaseList';
 import ClaimsManagement from './components/ClaimsManagement';
 import CashManagement from './components/CashManagement';
+import SettingsManagement from './components/SettingsManagement';
 import { cn } from './lib/utils';
 import { ClipboardList } from 'lucide-react';
 
@@ -258,31 +259,11 @@ export default function App() {
               {view === 'claims' && <ClaimsManagement cases={cases} onUpdateCase={handleUpdateCase} currentUser={currentUser} />}
               {view === 'cash' && <CashManagement cases={cases} onUpdateCase={handleUpdateCase} currentUser={currentUser} />}
               {view === 'settings' && (
-                <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
-                  <Settings className="w-16 h-16 text-slate-300 mb-4" />
-                  <h2 className="text-2xl font-bold mb-2">إدارة الصلاحيات (محاكاة)</h2>
-                  <p className="text-slate-500 max-w-md mb-6">تبديل دور المستخدم الحالي لاختبار الصلاحيات:</p>
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => setCurrentUser({...currentUser, role: 'admin'})}
-                      className={cn(
-                        "px-6 py-2 rounded font-bold transition-all",
-                        currentUser.role === 'admin' ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-600"
-                      )}
-                    >
-                      دخول كمدير (Admin)
-                    </button>
-                    <button 
-                      onClick={() => setCurrentUser({...currentUser, role: 'staff'})}
-                      className={cn(
-                        "px-6 py-2 rounded font-bold transition-all",
-                        currentUser.role === 'staff' ? "bg-brand-primary text-white" : "bg-slate-100 text-slate-600"
-                      )}
-                    >
-                      دخول كموظف (Staff)
-                    </button>
-                  </div>
-                </div>
+                <SettingsManagement 
+                  currentUser={currentUser} 
+                  onSwitchUser={(user) => setCurrentUser(user)}
+                  onUpdateCurrentUser={(user) => setCurrentUser(user)}
+                />
               )}
             </motion.div>
           </AnimatePresence>

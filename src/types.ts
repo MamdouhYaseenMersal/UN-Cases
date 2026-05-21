@@ -94,13 +94,14 @@ export interface Attachment {
   category: 'Medical' | 'Social';
 }
 
-export type UserRole = 'admin' | 'staff';
+export type UserRole = 'admin' | 'clinical' | 'financial' | 'staff';
 
 export interface User {
   id: string;
   name: string;
   role: UserRole;
   email: string;
+  status?: 'active' | 'inactive';
 }
 
 export interface RefugeeCase {

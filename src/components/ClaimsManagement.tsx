@@ -39,7 +39,19 @@ interface Notification {
 }
 
 export default function ClaimsManagement({ cases, onUpdateCase, currentUser }: ClaimsManagementProps) {
+  const isFinancialAuthorized = currentUser.role === 'admin' || currentUser.role === 'financial';
   const [searchQuery, setSearchQuery] = useState('');
+  const [availableDoctors, setAvailableDoctors] = useState<any[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('app_doctors');
+    if (saved) {
+      try {
+        setAvailableDoctors(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sortField, setSortField] = useState<'date' | 'patientName' | 'status' | 'netAmount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -421,6 +433,18 @@ export default function ClaimsManagement({ cases, onUpdateCase, currentUser }: C
         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Financial Claims & Medical Settlement Records</p>
       </div>
 
+      {!isFinancialAuthorized && (
+        <div className="bg-amber-50 rounded-xl border border-dashed border-amber-205 p-4 text-amber-900 text-xs flex items-start gap-3 justify-start text-right">
+          <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-extrabold text-amber-850">🔒 تنبيه الصلاحيات والوصول المقيد (حالة قراءة فقط):</p>
+            <p className="leading-relaxed text-slate-600 font-medium">
+              أنت مسجل حالياً بدور <span className="text-amber-700 font-black">{currentUser.role === 'clinical' ? 'منسق طبي' : 'موظف تسجيل'}</span>. هذا التبويب للمراجعة والمطالبات المالية متاح لك <b>للقراءة والاطلاع فقط</b>. كافة إجراءات إصدار المطالبات الطبية، تسوية الحسابات وصرف الفواتير تتطلب حساب <b>مسؤول مالي (Financial Officer)</b> أو <b>مدير النظام</b>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards and Summary Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="glass-card p-6 bg-white border-l-4 border-l-blue-500">
@@ -444,11 +468,20 @@ export default function ClaimsManagement({ cases, onUpdateCase, currentUser }: C
         </div>
         <div className="glass-card p-6 bg-white border-l-4 border-l-slate-900">
           <button 
-            onClick={() => setShowAddModal(true)}
-            className="w-full h-full flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
+            onClick={() => {
+              if (!isFinancialAuthorized) {
+                alert('عفواً، لا تملك الصلاحية المالية لإدراج مطالبات طبية جديدة. يرجى الدخول بصفة مسؤول مالي أو مدير النظام.');
+                return;
+              }
+              setShowAddModal(true);
+            }}
+            className={cn(
+              "w-full h-full flex flex-col items-center justify-center gap-2 transition-colors",
+              isFinancialAuthorized ? "hover:bg-slate-50 cursor-pointer" : "opacity-48 cursor-not-allowed bg-slate-50"
+            )}
           >
-            <Plus className="text-brand-primary" size={24} />
-            <span className="text-[10px] font-black uppercase tracking-widest">إضافة مطالبة جديدة</span>
+            <Plus className={cn(isFinancialAuthorized ? "text-brand-primary" : "text-slate-400")} size={24} />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">إضافة مطالبة جديدة</span>
           </button>
         </div>
       </div>
@@ -1253,14 +1286,20 @@ export default function ClaimsManagement({ cases, onUpdateCase, currentUser }: C
                 />
               </div>
 
-              <div>
+               <div>
                 <label className="label-caps mb-1 block">المقدم / المؤسسة</label>
                 <input 
                   type="text" className="input-field" 
                   placeholder="اسم المستشفى أو الطبيب"
                   value={claimForm.provider}
                   onChange={(e) => setClaimForm({...claimForm, provider: e.target.value})}
+                  list="claims-providers-list"
                 />
+                <datalist id="claims-providers-list">
+                  {availableDoctors.map((doc, idx) => (
+                    <option key={idx} value={`${doc.name} (${doc.hospital})`} />
+                  ))}
+                </datalist>
               </div>
 
               <div>
