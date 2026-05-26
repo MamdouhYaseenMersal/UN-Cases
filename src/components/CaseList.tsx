@@ -33,6 +33,8 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import CaseForm from './CaseForm';
+// @ts-ignore
+import unhcrIdTemplate from '../assets/images/unhcr_id_template_1779718494955.png';
 
 interface CaseListProps {
   cases: RefugeeCase[];
@@ -43,7 +45,7 @@ interface CaseListProps {
   currentUser: AppUser;
 }
 
-type SortField = 'createdAt' | 'fullName' | 'status' | 'nationality' | 'priority' | 'admissionDate' | 'type';
+type SortField = 'createdAt' | 'fullName' | 'status' | 'nationality' | 'priority' | 'admissionDate' | 'type' | 'estimatedCost';
 type SortOrder = 'asc' | 'desc';
 
 const StatusIcon = ({ status }: { status: CaseStatus }) => {
@@ -66,6 +68,7 @@ const DetailRow = ({ label, value, icon: Icon }: any) => (
 
 export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase, searchQuery, currentUser }: CaseListProps) {
   const [selectedCase, setSelectedCase] = useState<RefugeeCase | null>(null);
+  const [showIdPreview, setShowIdPreview] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<CaseStatus | 'All'>('All');
   const [nationalityFilter, setNationalityFilter] = useState<string>('All');
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -79,6 +82,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
   const [isUpdating, setIsUpdating] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [showExportOptions, setShowExportOptions] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('csv');
   const [exportOptions, setExportOptions] = useState({
     startDate: '',
     endDate: '',
@@ -240,6 +244,203 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
     }
   };
 
+  const handleExportPDF = () => {
+    setIsExporting(true);
+    
+    // Simulate generation delay
+    setTimeout(() => {
+      let casesToExport = filteredCases;
+      
+      if (exportOptions.startDate) {
+        casesToExport = casesToExport.filter(c => new Date(c.createdAt) >= new Date(exportOptions.startDate));
+      }
+      if (exportOptions.endDate) {
+        casesToExport = casesToExport.filter(c => new Date(c.createdAt) <= new Date(exportOptions.endDate));
+      }
+      if (exportOptions.type !== 'All') {
+        casesToExport = casesToExport.filter(c => c.type === exportOptions.type);
+      }
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('يرجى السماح بالنوافذ المنبثقة لتصدير تقرير الـ PDF.');
+        setIsExporting(false);
+        return;
+      }
+
+      const dateStr = format(new Date(), 'dd/MM/yyyy HH:mm');
+      const tableRows = casesToExport.map(c => {
+        const totalClaims = (c.medicalClaims || []).reduce((sum, cl) => sum + (cl.netAmount || 0), 0);
+        const totalCash = (c.cashPayments || []).reduce((sum, cp) => sum + (cp.netAmount || 0), 0);
+        const totalRealCost = totalClaims + totalCash;
+        
+        return `
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px; font-family: monospace; font-size: 11px;">${c.unhcrId}</td>
+            <td style="padding: 10px; font-weight: bold; font-size: 11px;">${c.fullName}</td>
+            <td style="padding: 10px; text-transform: uppercase; font-size: 10px;">${c.type}</td>
+            <td style="padding: 10px; font-size: 11px;">${c.nationality}</td>
+            <td style="padding: 10px; text-align: center; font-size: 11px;">${c.age}</td>
+            <td style="padding: 10px; font-weight: bold; font-size: 10px; color: ${c.status === 'Delivered' ? '#10b981' : c.status === 'Cancelled' ? '#f43f5e' : '#f59e0b'};">${c.status}</td>
+            <td style="padding: 10px; font-size: 10px;">${c.priority}</td>
+            <td style="padding: 10px; text-align: left; font-size: 11px; font-family: monospace;">${c.estimatedCost?.toLocaleString() || 0} ج.م</td>
+            <td style="padding: 10px; text-align: left; font-size: 11px; font-family: monospace;">${totalRealCost.toLocaleString()} ج.م</td>
+          </tr>
+        `;
+      }).join('');
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>تقرير حالات رعاية اللاجئين - UNHCR Portal Export</title>
+          <style>
+            body {
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              color: #1e293b;
+              margin: 40px;
+              line-height: 1.5;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 3px solid #0f172a;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .header-info {
+              text-align: right;
+            }
+            .header-logo {
+              text-align: left;
+            }
+            .title {
+              font-size: 22px;
+              font-weight: 900;
+              margin: 0 0 5px 0;
+              color: #0f172a;
+            }
+            .subtitle {
+              font-size: 11px;
+              color: #64748b;
+              font-weight: bold;
+              margin: 0;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }
+            .info-table {
+              width: 100%;
+              margin-bottom: 25px;
+              border-collapse: collapse;
+            }
+            .info-table td {
+              padding: 6px;
+              font-size: 11px;
+            }
+            .report-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 15px;
+              font-size: 11px;
+            }
+            .report-table th {
+              background-color: #0f172a;
+              color: #ffffff;
+              padding: 10px;
+              font-weight: 900;
+              text-align: right;
+              letter-spacing: 0.05em;
+            }
+            .report-table td {
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .footer {
+              margin-top: 40px;
+              border-top: 1px solid #e2e8f0;
+              padding-top: 15px;
+              font-size: 9px;
+              color: #94a3b8;
+              display: flex;
+              justify-content: space-between;
+            }
+            @media print {
+              body { margin: 20px; }
+              .no-print { display: none; }
+            }
+            .btn-print {
+              background-color: #0f172a;
+              color: white;
+              border: none;
+              padding: 10px 20px;
+              font-size: 13px;
+              font-weight: bold;
+              border-radius: 6px;
+              cursor: pointer;
+              margin-bottom: 20px;
+            }
+          </style>
+        </head>
+        <body onload="window.print()">
+          <div class="no-print" style="text-align: left; margin-bottom: 20px;">
+            <button class="btn-print" onclick="window.print()">تأكيد وطباعة التقرير (Print / Save to PDF)</button>
+          </div>
+          
+          <div class="header">
+            <div class="header-info">
+              <h1 class="title">تقرير مفصل لإدارة حالات الرعاية الطبية للاجئين</h1>
+              <p class="subtitle">Refugee Case Management Operational Summary Report</p>
+            </div>
+            <div class="header-logo" style="text-align: left;">
+              <div style="font-weight: 900; font-size: 18px; letter-spacing: 0.1em; color: #004561; font-family: sans-serif;">UNHCR PORTAL</div>
+              <div style="font-size: 9px; color: #64748b;">نظام المتابعة الطبية والبرامج الشريكة</div>
+            </div>
+          </div>
+
+          <table class="info-table">
+            <tr>
+              <td><strong>تاريخ استخراج التقرير:</strong> ${dateStr}</td>
+              <td style="text-align: left;"><strong>الحالات المشمولة:</strong> ${casesToExport.length} حالة لجوء نشطة</td>
+            </tr>
+            <tr>
+              <td><strong>عامل تصفية التواريخ:</strong> ${exportOptions.startDate || 'غير محدد'} إلى ${exportOptions.endDate || 'غير محدد'}</td>
+              <td style="text-align: left;"><strong>مسار الحالات المشمول:</strong> ${exportOptions.type === 'All' ? 'الكل' : exportOptions.type === 'emergency' ? 'طوارئ' : 'مجدولة'}</td>
+            </tr>
+          </table>
+
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>رقم المفوضية / ID</th>
+                <th>اسم اللاجئ المسجل</th>
+                <th>المسار / Track</th>
+                <th>الجنسية</th>
+                <th>العمر</th>
+                <th>حالة الملف</th>
+                <th>الأولوية</th>
+                <th style="text-align: left;">التكلفة المقدرة</th>
+                <th style="text-align: left;">التكلفة الفعلية</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+
+          <div class="footer" style="margin-top: 50px; display: flex; justify-content: space-between;">
+            <div>تم توليد هذا التقرير تلقائياً من بوابة المتابعة الرقمية المشتركة للمفوضية السامية لشؤون اللاجئين.</div>
+            <div>الصفحة 1 من 1</div>
+          </div>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      setIsExporting(false);
+      setShowExportOptions(false);
+    }, 1200);
+  };
+
   const handleExportCSV = () => {
     setIsExporting(true);
     
@@ -374,6 +575,8 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
       } else if (sortField === 'priority') {
         const priorityScore = { High: 3, Medium: 2, Low: 1 };
         comparison = (priorityScore[a.priority as Priority] || 0) - (priorityScore[b.priority as Priority] || 0);
+      } else if (sortField === 'estimatedCost') {
+        comparison = (a.estimatedCost || 0) - (b.estimatedCost || 0);
       } else if (sortField === 'status' || sortField === 'nationality' || sortField === 'fullName' || sortField === 'type') {
         comparison = (a[sortField] || '').localeCompare(b[sortField] || '');
       }
@@ -547,6 +750,8 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                 <option value="status">الحالة</option>
                 <option value="nationality">الجنسية</option>
                 <option value="priority">الأولوية</option>
+                <option value="admissionDate">تاريخ الدخول</option>
+                <option value="estimatedCost">التكلفة المقدرة</option>
               </select>
             </div>
 
@@ -599,12 +804,23 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                         <option value="scheduled">مجدولة</option>
                       </select>
                     </div>
+                    <div className="flex flex-col gap-1 pt-1">
+                      <label className="text-[8px] font-bold text-slate-400 uppercase">صيغة المستند / Document Format</label>
+                      <select 
+                        className="text-[10px] p-1 border border-slate-200 rounded outline-none"
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value as any)}
+                      >
+                        <option value="csv">ملف CSV مجدول (لبرامج Excel/Sheets)</option>
+                        <option value="pdf">تقرير لجوء رسمي PDF (جاهز للطباعة والمشاركة)</option>
+                      </select>
+                    </div>
                     <button 
-                      onClick={handleExportCSV}
+                      onClick={exportFormat === 'csv' ? handleExportCSV : handleExportPDF}
                       disabled={isExporting}
                       className="w-full btn-primary py-2 text-[10px] font-black tracking-widest relative"
                     >
-                      {isExporting ? <Loader2 size={12} className="animate-spin" /> : 'بدء التصدير'}
+                      {isExporting ? <Loader2 size={12} className="animate-spin" /> : 'بدء التصدير الاستقصائي'}
                     </button>
                   </div>
                 </div>
@@ -625,7 +841,10 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   className="px-6 py-4 font-black tracking-widest text-right cursor-pointer hover:bg-slate-800"
                   onClick={() => toggleSort('fullName')}
                 >
-                  الاسم المسجل
+                  <div className="flex items-center justify-end gap-1">
+                    الاسم المسجل
+                    {sortField === 'fullName' && <ArrowUpDown size={10} className={cn("text-brand-primary transition-transform", sortOrder === 'asc' ? 'rotate-180' : '')} />}
+                  </div>
                 </th>
                 <th 
                   className="px-6 py-4 font-black tracking-widest cursor-pointer hover:bg-slate-800 text-center"
@@ -633,7 +852,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                 >
                   <div className="flex items-center justify-center gap-1">
                     المسار / Track
-                    {sortField === 'type' && <ArrowUpDown size={10} className={sortOrder === 'asc' ? 'rotate-180' : ''} />}
+                    {sortField === 'type' && <ArrowUpDown size={10} className={cn("text-brand-primary transition-transform", sortOrder === 'asc' ? 'rotate-180' : '')} />}
                   </div>
                 </th>
                 <th className="px-6 py-4 font-black tracking-widest text-right">الجنسية</th>
@@ -660,8 +879,19 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   className="px-6 py-4 font-black tracking-widest cursor-pointer hover:bg-slate-800"
                   onClick={() => toggleSort('createdAt')}
                 >
-                  التسجيل
-                  {sortField === 'createdAt' && <ArrowUpDown size={10} className={sortOrder === 'asc' ? 'rotate-180' : ''} />}
+                  <div className="flex items-center justify-center gap-1">
+                    التسجيل
+                    {sortField === 'createdAt' && <ArrowUpDown size={10} className={cn("text-brand-primary transition-transform", sortOrder === 'asc' ? 'rotate-180' : '')} />}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 font-black tracking-widest cursor-pointer hover:bg-slate-800"
+                  onClick={() => toggleSort('estimatedCost')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    التكلفة المقدرة
+                    {sortField === 'estimatedCost' && <ArrowUpDown size={10} className={cn("text-brand-primary transition-transform", sortOrder === 'asc' ? 'rotate-180' : '')} />}
+                  </div>
                 </th>
                 <th className="px-6 py-4 font-black tracking-widest">المطالبة</th>
                 <th 
@@ -687,12 +917,23 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex flex-col">
-                      <button 
-                        onClick={() => setSelectedCase(c)}
-                        className="font-black text-slate-900 text-sm tracking-tight hover:text-brand-primary text-right"
-                      >
-                        {c.fullName}
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                          c.status === 'Delivered' ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                          c.status === 'Cancelled' ? "bg-rose-100 text-rose-800 border border-rose-200" :
+                          "bg-amber-100 text-amber-800 border border-amber-200"
+                        )}>
+                          <StatusIcon status={c.status} />
+                          <span>{c.status === 'Delivered' ? 'Delivered' : c.status === 'Cancelled' ? 'Cancelled' : 'Pending'}</span>
+                        </span>
+                        <button 
+                          onClick={() => setSelectedCase(c)}
+                          className="font-black text-slate-900 text-sm tracking-tight hover:text-brand-primary text-right"
+                        >
+                          {c.fullName}
+                        </button>
+                      </div>
                       <div className="flex items-center justify-start gap-2 flex-row-reverse">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{c.gender} • {c.age} YRS</span>
                     {c.priority && (
@@ -750,6 +991,9 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   </td>
                   <td className="px-6 py-5 text-slate-500 font-medium text-left">
                     {format(new Date(c.createdAt), 'dd/MM/yyyy')}
+                  </td>
+                  <td className="px-6 py-5 text-slate-800 font-black text-center font-mono text-xs">
+                    {(c.estimatedCost || 0).toLocaleString()} <span className="text-[10px] font-bold text-slate-400 font-sans">ج.م</span>
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex justify-center">
@@ -814,7 +1058,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
               ))}
               {filteredCases.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-20 text-center">
+                  <td colSpan={12} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-400">
                       <Search size={48} className="mb-4 opacity-20" />
                       <p className="text-lg font-bold uppercase tracking-widest">No Cases Found</p>
@@ -905,12 +1149,22 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   </div>
                 </div>
               </div>
-              <button 
-                onClick={() => setSelectedCase(null)}
-                className="p-2 hover:bg-white/10 rounded transition-colors"
-              >
-                <X size={24} />
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowIdPreview(true)}
+                  className="flex items-center gap-1.5 bg-brand-primary/20 hover:bg-brand-primary text-brand-primary hover:text-white border border-brand-primary/30 hover:border-brand-primary px-3 py-1.5 rounded text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  <ShieldCheck size={14} />
+                  <span>معاينة الهوية / View ID</span>
+                </button>
+                <button 
+                  onClick={() => setSelectedCase(null)}
+                  className="p-2 hover:bg-white/10 rounded transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
             </div>
 
             {/* Modal Content */}
@@ -1424,57 +1678,259 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                         </div>
                       </div>
 
-                      <div className="bg-white/50 p-4 border border-brand-primary/10 space-y-3 rounded">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block border-b border-slate-100 pb-1 mb-2">توزيع المصروفات (ج.م)</span>
-                        {[
-                          { label: 'الأدوية', key: 'medication' },
-                          { label: 'الاستشارات', key: 'consultation' },
-                          { label: 'الإجراءات الطبيبة', key: 'procedure' },
-                          { label: 'أخرى', key: 'other' }
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between gap-4">
-                            {editingBreakdown ? (
-                              <div className="flex-1 flex items-center gap-2">
-                                <input 
-                                  type="number" 
-                                  className="w-full text-xs p-2 bg-white border border-slate-200 rounded outline-none focus:border-brand-primary transition-colors font-mono"
-                                  value={(selectedCase.costBreakdown as any)?.[item.key] || 0}
-                                  onChange={(e) => updateCostBreakdown(item.key, parseFloat(e.target.value) || 0)}
-                                />
-                                <span className="text-[10px] font-bold text-slate-400">ج.م</span>
-                              </div>
-                            ) : (
-                              <span className="text-xs font-bold text-slate-900 bg-white/40 px-2 py-1 rounded">
-                                {((selectedCase.costBreakdown as any)?.[item.key] || 0).toLocaleString()} <small className="text-[9px] opacity-50 font-medium">ج.م</small>
-                              </span>
-                            )}
-                            <span className="text-[10px] text-slate-500 font-medium w-24 text-right">{item.label}</span>
-                          </div>
-                        ))}
+                      <div className="bg-white/50 p-4 border border-brand-primary/10 rounded-lg flex flex-col gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block border-b border-slate-100 pb-1">جدول توزيع المصروفات (ج.م) / Cost Breakdown</span>
+                        <table id="cost-breakdown-table" className="w-full text-xs text-right border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-400 font-bold text-[9px] uppercase">
+                              <th className="py-2 px-1 text-center font-black">المقارنة / Review</th>
+                              <th className="py-2 px-1 text-center font-black">الميزانية المقدرة / Budget</th>
+                              <th className="py-2 px-1 text-center font-black">التكلفة الفعلية / Actual</th>
+                              <th className="py-2 px-1 text-right font-black">البند / Item</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { 
+                                label: 'الأدوية', 
+                                key: 'medication', 
+                                description: 'توزيع المصاريف للأدوية المعتمدة والوصفات الطبية لمتابعة الحالات المزمنة أو الحادة.',
+                                getBudget: (est: number) => Math.max(1000, Math.round(est * 0.35))
+                              },
+                              { 
+                                label: 'الاستشارات', 
+                                key: 'consultation', 
+                                description: 'زيارات الأخصائيين، الاستشارات السريرية الأولية والمتابعات الدورية داخل العيادات.',
+                                getBudget: (est: number) => Math.max(500, Math.round(est * 0.15))
+                              },
+                              { 
+                                label: 'الإجراءات', 
+                                key: 'procedure', 
+                                description: 'العمليات الجراحية، الفحوصات المخبرية الدقيقة، الأشعة والتصوير الطبي المتخصص.',
+                                getBudget: (est: number) => Math.max(2000, Math.round(est * 0.40))
+                              },
+                              { 
+                                label: 'أخرى', 
+                                key: 'other', 
+                                description: 'نفقات النقل الإسعافي، الطوارئ الطبية غير المصنفة والمصاريف الإدارية والخدمات الشريكة.',
+                                getBudget: (est: number) => Math.max(500, Math.round(est * 0.10))
+                              }
+                            ].map((item) => {
+                              const costValue = (selectedCase.costBreakdown as any)?.[item.key] || 0;
+                              const projectedBudget = item.getBudget(selectedCase.estimatedCost || 0);
+                              const isOverBudget = costValue > projectedBudget;
+
+                              return (
+                                <tr key={item.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                  {/* Comparison Status Badge */}
+                                  <td className="py-2.5 px-1 text-center">
+                                    <span className={cn(
+                                      "inline-block text-[8px] font-black tracking-tighter px-1 rounded-sm uppercase",
+                                      isOverBudget 
+                                        ? "bg-rose-100 text-rose-805 border border-rose-200" 
+                                        : "bg-emerald-100 text-emerald-805 border border-emerald-200"
+                                    )}>
+                                      {isOverBudget ? 'متجاوز / OVER' : 'ضمن الحد / OK'}
+                                    </span>
+                                  </td>
+                                  
+                                  {/* Projected budget column */}
+                                  <td className="py-2.5 px-1 text-center font-mono text-slate-500 font-bold text-[10px]">
+                                    {projectedBudget.toLocaleString()} <span className="text-[8px] font-bold text-slate-400">ج.م</span>
+                                  </td>
+
+                                  {/* Cost input or display cell (conditioned on budget limit with light red highlight if overbudget) */}
+                                  <td className={cn(
+                                    "py-1 px-1 transition-all rounded-md text-center",
+                                    isOverBudget ? "bg-red-50 text-red-700 font-bold" : ""
+                                  )}>
+                                    {editingBreakdown ? (
+                                      <div className="flex items-center justify-center gap-1 mx-auto max-w-[100px]">
+                                        <input 
+                                          type="number" 
+                                          className={cn(
+                                            "w-full text-xs p-1 text-center bg-white border border-slate-200 rounded outline-none focus:border-brand-primary font-mono",
+                                            isOverBudget ? "border-red-300 text-red-700 bg-red-50" : ""
+                                          )}
+                                          value={costValue}
+                                          onChange={(e) => updateCostBreakdown(item.key, parseFloat(e.target.value) || 0)}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span className="font-mono text-[10px]">
+                                        {costValue.toLocaleString()} <span className="text-[8px] opacity-40">ج.م</span>
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Label and Tooltipped icon */}
+                                  <td className="py-2.5 px-1 text-right font-medium text-slate-800 text-[10px]">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {/* Hover tooltip for explanation */}
+                                      <div className="group relative inline-block cursor-help">
+                                        <Info size={11} className="text-slate-400 hover:text-brand-primary transition-colors" />
+                                        <div className="absolute z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] rounded-lg p-3 text-right w-48 -top-10 -left-6 border border-slate-700 shadow-xl leading-relaxed">
+                                          <p className="font-black text-brand-primary mb-1 border-b border-white/10 pb-1">
+                                            {item.label} (تفاصيل الهيكل)
+                                          </p>
+                                          <p className="text-slate-300 font-medium">
+                                            {item.description}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <span>{item.label}</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Column: History */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-2 px-1 py-0.5 bg-white border border-slate-200 rounded text-[9px] font-bold text-slate-500">
-                      <Filter size={10} />
-                      <select 
-                        className="bg-transparent outline-none"
-                        value={historyFilter}
-                        onChange={(e) => setHistoryFilter(e.target.value)}
-                      >
-                        <option value="All">الكل</option>
-                        {actionTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
-                      سجل المتابعة
-                      <History size={14} className="text-brand-primary" />
+                {/* Right Column: Identity Card & History */}
+                <div className="space-y-6">
+                  {/* UNHCR Digital ID Card Block */}
+                  <div className="glass-card p-5 bg-gradient-to-br from-blue-50/70 to-indigo-50/20 border border-slate-200/60 rounded-none space-y-4 shadow-xs">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 justify-end">
+                      بطاقة هوية المفوضية الرقمية (UNHCR Identity Card)
+                      <ShieldCheck size={14} className="text-brand-primary" />
                     </h3>
+
+                    <div className="relative w-full aspect-[1.586/1] rounded-xl overflow-hidden shadow-lg border border-slate-100 flex flex-col justify-between p-4 group select-none">
+                      {/* Generated ID Template Background */}
+                      <img 
+                        src={unhcrIdTemplate} 
+                        alt="UNHCR ID Backdrop" 
+                        className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none brightness-105 shadow-inner"
+                        referrerPolicy="no-referrer"
+                      />
+                      
+                      {/* Translucent overlay mask to maintain high contrast readability */}
+                      <div className="absolute inset-0 bg-blue-950/15 z-5" />
+
+                      {/* Header Inside Card */}
+                      <div className="relative z-10 flex justify-between items-start text-white">
+                        <div className="flex flex-col text-left">
+                          <span className="text-[11px] font-black tracking-widest uppercase text-white drop-shadow-sm font-sans">UNHCR</span>
+                          <span className="text-[5.5px] font-bold tracking-wider text-blue-100 uppercase font-sans">United Nations High Commissioner for Refugees</span>
+                        </div>
+                        {/* Simulated official badge / UNHCR emblem placeholder */}
+                        <div className="w-6 h-6 bg-white/15 backdrop-blur-xs rounded-full flex items-center justify-center border border-white/20 shadow-xs">
+                          <ShieldCheck size={12} className="text-white" />
+                        </div>
+                      </div>
+
+                      {/* Middle Body section containing portrait placeholder and demographic fields */}
+                      <div className="relative z-10 grid grid-cols-3 gap-3 items-center mt-2 text-white">
+                        {/* Refugee photo passport photo placeholder */}
+                        <div className="col-span-1 bg-slate-950/40 border border-white/15 rounded aspect-[3/4] flex flex-col items-center justify-center p-1 relative overflow-hidden backdrop-blur-xs shadow-inner">
+                          <User size={28} className="text-white/60" />
+                          <span className="text-[4px] font-black uppercase text-white/50 tracking-widest mt-1 text-center font-mono">PHOTO REQ</span>
+                        </div>
+
+                        {/* Text fields formatted like a official plastic card */}
+                        <div className="col-span-2 space-y-1 text-right flex flex-col justify-center">
+                          <div>
+                            <span className="text-[4.5px] text-blue-100/95 font-bold block">NAME / الاسم الكامل</span>
+                            <span className="text-[9px] font-black tracking-tight drop-shadow-sm leading-tight text-white block truncate">{selectedCase.fullName}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[4.5px] text-blue-100/95 font-bold block">NATIONALITY / الجنسية</span>
+                              <span className="text-[7px] font-black text-white drop-shadow-sm truncate block">{selectedCase.nationality}</span>
+                            </div>
+                            <div>
+                              <span className="text-[4.5px] text-blue-100/95 font-bold block">CASE NO / رقم الحالة</span>
+                              <span className="text-[7.5px] font-bold font-mono tracking-tight text-white drop-shadow-sm block truncate">{selectedCase.unhcrId}</span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            <div>
+                              <span className="text-[4px] text-blue-100/95 font-bold block">GENDER / الجنس</span>
+                              <span className="text-[6.5px] font-bold text-white block">{selectedCase.gender === 'Male' ? 'ذكر' : selectedCase.gender === 'Female' ? 'أنثى' : 'آخر'}</span>
+                            </div>
+                            <div>
+                              <span className="text-[4px] text-blue-100/95 font-bold block">AGE / العمر</span>
+                              <span className="text-[6.5px] font-bold text-white block">{selectedCase.age} سنة</span>
+                            </div>
+                            <div>
+                              <span className="text-[4px] text-blue-100/95 font-bold block">ISSUED / صدور</span>
+                              <span className="text-[6.5px] font-mono font-bold text-white block">
+                                {selectedCase.admissionDate ? format(new Date(selectedCase.admissionDate), 'MM/yyyy') : '05/2026'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Footer containing barcode placeholder */}
+                      <div className="relative z-10 flex items-end justify-between mt-1 text-white">
+                        <div className="text-[4.5px] text-white/70 font-bold font-mono uppercase tracking-wide">
+                          PORTAL ISSUED SYSTEM ID: {selectedCase.id.slice(0, 8)}
+                        </div>
+                        {/* Simulated realistic barcode bars */}
+                        <div className="flex flex-col items-end">
+                          <div className="flex items-end gap-[1.5px] h-3.5 bg-white/10 p-0.5 rounded-xs">
+                            <div className="w-[1px] h-2.5 bg-white" />
+                            <div className="w-[2.5px] h-2.5 bg-white" />
+                            <div className="w-[1px] h-2.5 bg-white" />
+                            <div className="w-[1.5px] h-2.5 bg-white" />
+                            <div className="w-[1px] h-2.5 bg-white" />
+                            <div className="w-[2.5px] h-2.5 bg-white" />
+                            <div className="w-[1px] h-2.5 bg-white" />
+                            <div className="w-[2px] h-2.5 bg-white" />
+                            <div className="w-[1px] h-2.5 bg-white" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Interactive document utilities */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => {
+                          alert(`تم تصدير بطاقة هوية المفوضية الرقمية للاجئ ${selectedCase.fullName} وتجهيز ملف التحميل بنجاح.`);
+                        }}
+                        className="w-full flex items-center justify-center gap-1 py-1.5 bg-white border border-slate-250 text-slate-700 text-[10px] font-black rounded hover:bg-slate-50 transition-colors uppercase tracking-wider cursor-pointer"
+                      >
+                        <Download size={11} />
+                        تنزيل البطاقة
+                      </button>
+                      <button 
+                        onClick={() => {
+                          window.print();
+                        }}
+                        className="w-full flex items-center justify-center gap-1 py-1.5 bg-brand-primary text-white text-[10px] font-black rounded hover:bg-brand-primary/95 transition-colors uppercase tracking-wider cursor-pointer"
+                      >
+                        <ShieldCheck size={11} />
+                        طباعة الهوية
+                      </button>
+                    </div>
                   </div>
+
+                  {/* History List */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between px-2">
+                      <div className="flex items-center gap-2 px-1 py-0.5 bg-white border border-slate-200 rounded text-[9px] font-bold text-slate-500">
+                        <Filter size={10} />
+                        <select 
+                          className="bg-transparent outline-none"
+                          value={historyFilter}
+                          onChange={(e) => setHistoryFilter(e.target.value)}
+                        >
+                          <option value="All">الكل</option>
+                          {actionTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
+                        سجل المتابعة
+                        <History size={14} className="text-brand-primary" />
+                      </h3>
+                    </div>
                   
                   <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                     {filteredHistory.map((entry, idx) => (
@@ -1532,6 +1988,7 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                     )}
                   </div>
                 </div>
+                </div>
               </div>
             </div>
 
@@ -1552,6 +2009,136 @@ export default function CaseList({ cases, onDelete, onUpdateStatus, onUpdateCase
                   className="px-6 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded hover:bg-emerald-700 transition-colors shadow-sm"
                 >
                   Mark as Delivered
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNHCR ID Card Preview Overlay */}
+      {selectedCase && showIdPreview && (
+        <div className="fixed inset-0 z-[201] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col relative text-right">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <span className="text-xs font-black tracking-wider flex items-center gap-2">
+                <ShieldCheck className="text-brand-primary w-4 h-4" />
+                <span>بطاقة الهوية UNHCR ID Card Preview</span>
+              </span>
+              <button 
+                type="button"
+                onClick={() => setShowIdPreview(false)}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 bg-slate-900 flex justify-center items-center">
+              <div className="relative w-full aspect-[1.586/1] rounded-xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between p-5 group select-none">
+                {/* Generated ID Template Background */}
+                <img 
+                  src={unhcrIdTemplate} 
+                  alt="UNHCR ID Backdrop" 
+                  className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none brightness-105"
+                  referrerPolicy="no-referrer"
+                />
+                
+                {/* Translucent overlay mask */}
+                <div className="absolute inset-0 bg-blue-950/20 z-5" />
+
+                {/* Header Inside Card */}
+                <div className="relative z-10 flex justify-between items-start text-white">
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs font-black tracking-widest uppercase text-white drop-shadow-md font-sans">UNHCR</span>
+                    <span className="text-[6px] font-bold tracking-wider text-blue-100 uppercase font-sans">United Nations High Commissioner for Refugees</span>
+                  </div>
+                  <div className="w-7 h-7 bg-white/15 backdrop-blur-xs rounded-full flex items-center justify-center border border-white/20 shadow-xs">
+                    <ShieldCheck size={14} className="text-white" />
+                  </div>
+                </div>
+
+                {/* Middle Body */}
+                <div className="relative z-10 grid grid-cols-3 gap-4 items-center mt-3 text-white">
+                  <div className="col-span-1 bg-slate-950/50 border border-white/10 rounded-lg aspect-[3/4] flex flex-col items-center justify-center p-2 relative overflow-hidden backdrop-blur-sm shadow-inner">
+                    <User size={36} className="text-white/40" />
+                    <span className="text-[5px] font-black uppercase text-white/40 tracking-widest mt-1 text-center font-mono">PHOTO REQUIRED</span>
+                  </div>
+
+                  <div className="col-span-2 space-y-1.5 text-right flex flex-col justify-center">
+                    <div>
+                      <span className="text-[5px] text-blue-100/95 font-bold block">NAME / الاسم الكامل</span>
+                      <span className="text-xs font-black tracking-tight drop-shadow-sm leading-tight text-white block truncate">{selectedCase.fullName}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[5px] text-blue-100/95 font-bold block">NATIONALITY / الجنسية</span>
+                        <span className="text-[8px] font-black text-white drop-shadow-sm truncate block">{selectedCase.nationality}</span>
+                      </div>
+                      <div>
+                        <span className="text-[5px] text-blue-100/95 font-bold block">CASE NO / رقم الحالة</span>
+                        <span className="text-[8.5px] font-bold font-mono tracking-tight text-white drop-shadow-sm block truncate">{selectedCase.unhcrId}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      <div>
+                        <span className="text-[4.5px] text-blue-100/95 font-bold block">GENDER / الجنس</span>
+                        <span className="text-[7.5px] font-bold text-white block">{selectedCase.gender === 'Male' ? 'ذكر' : selectedCase.gender === 'Female' ? 'أنثى' : 'آخر'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[4.5px] text-blue-100/95 font-bold block">AGE / العمر</span>
+                        <span className="text-[7.5px] font-bold text-white block">{selectedCase.age} سنة</span>
+                      </div>
+                      <div>
+                        <span className="text-[4.5px] text-blue-100/95 font-bold block">ISSUED / صدور</span>
+                        <span className="text-[7.5px] font-mono font-bold text-white block">
+                          {selectedCase.admissionDate ? format(new Date(selectedCase.admissionDate), 'MM/yyyy') : '05/2026'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="relative z-10 flex items-end justify-between mt-2 text-white">
+                  <div className="text-[5px] text-white/60 font-mono uppercase tracking-wide">
+                    PORTAL SYSTEM ID: {selectedCase.id.slice(0, 12)}
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-end gap-[1.5px] h-4 bg-white/10 p-0.5 rounded-xs">
+                      <div className="w-[1px] h-3 bg-white" />
+                      <div className="w-[2px] h-3 bg-white" />
+                      <div className="w-[1px] h-3 bg-white" />
+                      <div className="w-[1.5px] h-3 bg-white" />
+                      <div className="w-[1px] h-3 bg-white" />
+                      <div className="w-[2px] h-3 bg-white" />
+                      <div className="w-[1px] h-3 bg-white" />
+                      <div className="w-[1.5px] h-3 bg-white" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 text-right">
+              <span className="text-[10px] text-slate-400 font-bold">رقم المستند الرقمي: {selectedCase.unhcrId}</span>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowIdPreview(false)}
+                  className="px-4 py-2 bg-white border border-slate-250 text-slate-705 text-xs font-black rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  إغلاق
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    alert('تم إرسال طلب طباعة بطاقة الهوية اللاجئة بنجاح.');
+                  }}
+                  className="px-5 py-2 bg-slate-900 text-white text-xs font-black rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck size={14} className="text-emerald-400" />
+                  طباعة الهوية
                 </button>
               </div>
             </div>

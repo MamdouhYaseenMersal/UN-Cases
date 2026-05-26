@@ -28,6 +28,7 @@ import CaseList from './components/CaseList';
 import ClaimsManagement from './components/ClaimsManagement';
 import CashManagement from './components/CashManagement';
 import SettingsManagement from './components/SettingsManagement';
+import MonthlyReportExport from './components/MonthlyReportExport';
 import { cn } from './lib/utils';
 import { ClipboardList } from 'lucide-react';
 
@@ -38,6 +39,7 @@ export default function App() {
   const [cases, setCases] = useState<RefugeeCase[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isReportOpen, setIsReportOpen] = useState(false);
   
   const [currentUser, setCurrentUser] = useState<User>({
     id: '1',
@@ -223,6 +225,13 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
+            <button 
+              onClick={() => setIsReportOpen(true)}
+              className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs font-black tracking-wider transition-all border border-white/25 hover:border-white/50"
+            >
+              <ClipboardList size={14} className="text-yellow-300" />
+              <span>المدقق الشهري / Reports</span>
+            </button>
             <div className="hidden md:flex flex-col items-start text-xs text-left">
               <span className="font-bold">{currentUser.name}</span>
               <span className="opacity-75">{currentUser.role === 'admin' ? 'Administrator' : 'Staff Member'}</span>
@@ -244,7 +253,14 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {view === 'dashboard' && <Dashboard cases={cases} stats={stats} />}
+              {view === 'dashboard' && (
+                <Dashboard 
+                  cases={cases} 
+                  stats={stats} 
+                  onUpdateCase={handleUpdateCase}
+                  onUpdateStatus={handleUpdateStatus}
+                />
+              )}
               {view === 'new-case' && <CaseForm onSubmit={handleAddCase} currentUser={currentUser} />}
               {view === 'case-list' && (
                 <CaseList 
@@ -268,6 +284,14 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Monthly Report Export Modal */}
+        <MonthlyReportExport 
+          isOpen={isReportOpen} 
+          onClose={() => setIsReportOpen(false)} 
+          cases={cases}
+          currentUser={currentUser}
+        />
       </main>
     </div>
   );

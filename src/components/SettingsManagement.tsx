@@ -17,9 +17,11 @@ import {
   Building,
   Mail,
   Lock,
-  UserCheck
+  UserCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import ExportLogs from './ExportLogs';
 
 export interface Doctor {
   id: string;
@@ -54,7 +56,7 @@ const defaultUsers: User[] = [
 ];
 
 export default function SettingsManagement({ currentUser, onSwitchUser, onUpdateCurrentUser }: SettingsManagementProps) {
-  const [activeTab, setActiveTab] = useState<'doctors' | 'users' | 'permissions'>('doctors');
+  const [activeTab, setActiveTab] = useState<'doctors' | 'users' | 'permissions' | 'exports'>('doctors');
   
   // State for Doctors
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -303,6 +305,16 @@ export default function SettingsManagement({ currentUser, onSwitchUser, onUpdate
         >
           <Key size={15} />
           <span>مصفوفة الأدوار والصلاحيات</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('exports')}
+          className={cn(
+            "px-5 py-3 text-xs font-bold transition-all relative flex items-center gap-2 border-b-2 whitespace-nowrap",
+            activeTab === 'exports' ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <FileSpreadsheet size={15} />
+          <span>سجل التقارير المصدرة</span>
         </button>
       </div>
 
@@ -934,6 +946,11 @@ export default function SettingsManagement({ currentUser, onSwitchUser, onUpdate
             </table>
           </div>
         </div>
+      )}
+
+      {/* Tab: Export Logs */}
+      {activeTab === 'exports' && (
+        <ExportLogs />
       )}
     </div>
   );
